@@ -332,6 +332,7 @@ async function handleClick(event: MouseEvent): Promise<void> {
   const target = event.target as HTMLElement;
   const actionEl = target.closest<HTMLElement>("[data-action]");
   if (!actionEl) return;
+  if (actionEl.classList.contains("modal") && target !== actionEl) return;
   const action = actionEl.dataset.action || "";
   if (action === "close-modal") {
     event.preventDefault();
