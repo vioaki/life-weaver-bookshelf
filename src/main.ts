@@ -333,8 +333,17 @@ async function handleClick(event: MouseEvent): Promise<void> {
   const actionEl = target.closest<HTMLElement>("[data-action]");
   if (!actionEl) return;
   const action = actionEl.dataset.action || "";
-  if (action === "close-modal" && target === actionEl) modal = null;
-  if (action !== "close-modal") event.preventDefault();
+  if (action === "close-modal") {
+    event.preventDefault();
+    const clickedBackdrop = actionEl.classList.contains("modal") && target === actionEl;
+    const clickedCloseButton = actionEl.tagName === "BUTTON";
+    if (clickedBackdrop || clickedCloseButton) {
+      modal = null;
+      renderApp();
+    }
+    return;
+  }
+  event.preventDefault();
 
   if (action === "back-home") {
     view = "home";
@@ -357,9 +366,6 @@ async function handleClick(event: MouseEvent): Promise<void> {
   } else if (action === "open-finale") {
     modal = "finale";
     dockExpanded = false;
-    renderApp();
-  } else if (action === "close-modal") {
-    modal = null;
     renderApp();
   } else if (action === "start-new" || action === "reincarnate") {
     await startNewBook();
