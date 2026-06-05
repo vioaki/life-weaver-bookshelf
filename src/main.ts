@@ -490,28 +490,18 @@ function renderShelf(): string {
 function renderBookCard(book: BookRecord): string {
   const age = book.state.age != null ? `${book.state.age}岁` : "年岁未详";
   const statusText = book.status === "finished" ? "终" : "续";
+  const note = book.summaryLine || `${book.world} · ${age}`;
   return `
     <article class="book-card" style="--paper:${book.coverStyle.paper};--seal:${book.coverStyle.seal}">
-      <div class="book-spine">
-        <span>${esc(statusText)}</span>
-      </div>
-      <div class="book-card-body">
-        <div class="book-card-head">
-          <span class="avatar-mark">${esc(book.avatar || "卷")}</span>
-          <span class="status ${book.status}">${book.status === "finished" ? "终章" : "未竟"}</span>
-        </div>
-        <h2>${esc(book.title)}</h2>
-        <p>${esc(book.summaryLine || `${book.world} · ${age}`)}</p>
-        <div class="book-meta">
-          <span>${esc(book.protagonist || "无名者")}</span>
-          <span>${formatDate(book.updatedAt)}</span>
-        </div>
-        <div class="book-actions">
-          ${book.status === "ongoing" ? `<button data-action="continue-book" data-id="${book.id}">续写</button>` : ""}
-          <button data-action="read-book" data-id="${book.id}">翻阅</button>
-          ${book.status === "finished" ? `<button data-action="open-finale-book" data-id="${book.id}">终章</button>` : ""}
-          <button class="danger" data-action="delete-book" data-id="${book.id}">焚毁</button>
-        </div>
+      <button class="book-spine" data-action="read-book" data-id="${book.id}" title="${attr(note)}">
+        <span class="book-spine-mark">${esc(statusText)}</span>
+        <span class="book-spine-title">${esc(book.title)}</span>
+      </button>
+      <div class="book-actions" aria-label="${attr(book.title)}操作">
+        ${book.status === "ongoing" ? `<button data-action="continue-book" data-id="${book.id}">[续]</button>` : ""}
+        <button data-action="read-book" data-id="${book.id}">[阅]</button>
+        ${book.status === "finished" ? `<button data-action="open-finale-book" data-id="${book.id}">[终]</button>` : ""}
+        <button class="danger" data-action="delete-book" data-id="${book.id}">[焚]</button>
       </div>
     </article>
   `;
@@ -525,23 +515,25 @@ function renderReader(): string {
   const hasPages = pages.length > 0;
   const atStart = currentPageIndex <= 0;
   const atEnd = !hasPages || currentPageIndex >= pages.length - 1;
+  const ageStr = state.age != null ? `${state.age}春秋` : "";
+  const infoLine = [state.world, ageStr, state.oneline].filter(Boolean).join(" · ");
   return `
     <main class="reader">
       <header id="topbar">
-        <button class="iconbtn" data-action="back-home" title="书案">⌂</button>
-        <div id="avatar">${esc(book.avatar || state.avatar || "卷")}</div>
         <div id="whoami">
-          <div id="name">${esc(book.title || "未名之卷")}</div>
-          <div id="sub">${esc([state.oneline, state.world].filter(Boolean).join(" · ") || book.summaryLine || "命运尚未启封")}</div>
+          <h1 id="name">${esc(book.title || "未名之卷")}</h1>
+          <div id="sub">${esc(infoLine || "命运尚未启封")}</div>
         </div>
-        <div class="agebadge"><b>${state.age ?? "—"}</b><span>春秋</span></div>
-        <button class="iconbtn" data-action="open-stats" title="命格">☯</button>
-        <button class="iconbtn" data-action="open-relationships" title="人物">缘</button>
-        <button class="iconbtn" data-action="open-settings" title="设置">☰</button>
+        <nav class="reader-nav">
+          <button class="nav-text-link" data-action="back-home">归案</button>
+          <button class="nav-text-link" data-action="open-stats">命格</button>
+          <button class="nav-text-link" data-action="open-relationships">因缘</button>
+          <button class="nav-text-link" data-action="open-settings">笔墨</button>
+        </nav>
       </header>
 
-      <button class="nav-wing left ${atStart ? "disabled" : ""}" data-action="prev-page" title="上一卷">⟨</button>
-      <button class="nav-wing right ${atEnd ? "disabled" : ""}" data-action="next-page" title="下一卷">⟩</button>
+      <button class="nav-wing left ${atStart ? "disabled" : ""}" data-action="prev-page" title="上一卷">前卷</button>
+      <button class="nav-wing right ${atEnd ? "disabled" : ""}" data-action="next-page" title="下一卷">后卷</button>
 
       <div id="main-book-frame">
         <div id="book-viewport">
@@ -560,7 +552,7 @@ function renderWelcomePage(): string {
   return `
     <article class="book-page active">
       <div class="era"><span class="deco">❖ 序 章 ❖</span><span class="ttl">人生之书</span></div>
-      <div class="story"><span class="dropcap">命</span>运尚未落笔。启封新卷后，此处会逐页留下你的一生。</div>
+      <div class="story settled-text"><span class="dropcap">命</span>运尚未落笔。启封新卷后，此处会逐页留下你的一生。</div>
       <div class="page-num">— 序 —</div>
     </article>
   `;
@@ -572,8 +564,8 @@ function renderPage(page: BookPage, index: number): string {
   return `
     <article class="book-page ${active}">
       <div class="era"><span class="deco">❖ 第 ${chapter} 卷 ❖</span><span class="ttl">${esc(page.era_label || "启笔")}</span></div>
-      <div class="story">${storyHTML(page.narrative)}</div>
-      ${page.event ? `<div class="event"><b>变故 · </b>${esc(page.event)}</div>` : ""}
+      <div class="story settled-text">${storyHTML(page.narrative)}</div>
+      ${page.event ? `<div class="event ink-anim"><b>变故 · </b>${esc(page.event)}</div>` : ""}
       ${page.deltas?.length ? `<div class="deltas">${page.deltas.map((d) => `<span class="delta ${(d.d || 0) >= 0 ? "up" : "down"}">${esc(d.k)} ${(d.d || 0) >= 0 ? "+" : ""}${d.d}</span>`).join("")}</div>` : ""}
       ${page.choiceMade ? `<div class="mychoice"><span class="label">朱批</span><span class="txt">${esc(page.choiceMade)}</span></div>` : ""}
       <div class="page-num">— 卷 ${chapter} —</div>
@@ -585,14 +577,9 @@ function renderDock(book: BookRecord): string {
   const state = book.state;
   const dead = book.status === "finished" || !!state.dead;
   return `
-    <section id="dock" class="${dockExpanded ? "expanded" : ""}">
-      <button id="dock-handle" data-action="dock-toggle">
-        <span class="title-text">${dead ? "❧ 终章笺" : "📜 执笔抉择"}</span>
-        <span class="handle-hint">${dockExpanded ? "收起" : "启封"}</span>
-        <span class="arrow-icon">▲</span>
-      </button>
+    <section id="dock">
       <div id="dock-content">
-        ${busy ? `<div class="dock-hint">墨迹未干</div>` : dead ? renderFinaleDock() : renderChoiceDock(state)}
+        ${busy ? `<div class="dock-hint">墨迹未干...</div>` : dead ? renderFinaleDock() : renderChoiceDock(state)}
       </div>
     </section>
   `;
@@ -604,14 +591,25 @@ function renderFinaleDock(): string {
 
 function renderChoiceDock(state: LifeState): string {
   const choices = state.choices || [];
+  const cnNums = ["壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖", "拾"];
+  const delay = (seconds: number) => `${seconds.toFixed(2)}s`;
+  const freeDelay = delay(choices.length * 0.15 + 0.1);
+  const rerollDelay = delay(choices.length * 0.15 + 0.2);
   return `
-    <div class="dock-hint">命运的岔路 <button id="newchoices" data-action="reroll">换一批选项</button></div>
     <div class="choices">
-      ${choices.map((choice, index) => `<button class="choice" data-action="choice" data-choice="${attr(choice)}"><span class="num">${index + 1}</span><span>${esc(choice)}</span></button>`).join("")}
+      ${choices.map((choice, index) => `
+        <button class="choice ink-anim" style="animation-delay:${delay(index * 0.15)}" data-action="choice" data-choice="${attr(choice)}">
+          <span class="num">${cnNums[index] || index + 1}</span>
+          <span class="txt">${esc(choice)}</span>
+        </button>
+      `).join("")}
     </div>
-    <div class="freerow">
-      <input id="freein" placeholder="或，亲笔写下你的去向…" autocomplete="off" ${busy ? "disabled" : ""}/>
-      <button id="sendbtn" data-action="send-free" ${busy ? "disabled" : ""}>书</button>
+    <div class="freerow ink-anim" style="animation-delay:${freeDelay}">
+      <input id="freein" placeholder="或，执笔写下你的去向…" autocomplete="off" ${busy ? "disabled" : ""}/>
+      <button id="sendbtn" data-action="send-free" ${busy ? "disabled" : ""}>落笔</button>
+    </div>
+    <div class="reroll-row ink-anim" style="animation-delay:${rerollDelay}">
+      <button id="newchoices" data-action="reroll">运势不佳，另求出路</button>
     </div>
   `;
 }
@@ -951,7 +949,11 @@ function applyState(book: BookRecord, state: LifeState | null): void {
 function updateActiveStory(page: BookPage): void {
   const story = document.querySelector<HTMLElement>(".book-page.active .story");
   const title = document.querySelector<HTMLElement>(".book-page.active .era .ttl");
-  if (story) story.innerHTML = storyHTML(page.narrative);
+  if (story) {
+    story.classList.add("streaming-text");
+    story.classList.remove("settled-text", "ink-anim");
+    story.innerHTML = `${storyHTML(page.narrative)}<span class="ink-cursor"></span>`;
+  }
   if (title) title.textContent = page.era_label;
 }
 
