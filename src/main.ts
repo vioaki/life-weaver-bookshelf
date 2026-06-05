@@ -55,6 +55,7 @@ async function refreshBooks(): Promise<void> {
 }
 
 function renderApp(): void {
+  app.dataset.view = view;
   let homeSandbox = app.querySelector<HTMLElement>("#view-sandbox-home");
   let shelfSandbox = app.querySelector<HTMLElement>("#view-sandbox-shelf");
   let readerSandbox = app.querySelector<HTMLElement>("#view-sandbox-reader");
@@ -122,12 +123,6 @@ function renderApp(): void {
   if (view === "shelf") shelfSandbox.innerHTML = renderShelf();
   if (view === "reader") {
     readerSandbox.innerHTML = renderReader();
-    if (!modal) {
-      setTimeout(() => {
-        const stream = readerSandbox.querySelector<HTMLElement>(".narrative-stream-zone");
-        if (stream) stream.scrollTop = stream.scrollHeight;
-      }, 50);
-    }
   }
 
   homeSandbox.classList.toggle("active-view", view === "home");
@@ -524,106 +519,40 @@ function renderBookCard(book: BookRecord): string {
 
 function renderReader(): string {
   const book = activeBook;
-  if (!book) return "";
+  if (!book) return renderHome();
   const state = book.state;
   const pages = book.pages;
-  const stats = Object.keys(state.stats || {}).length ? state.stats || {} : { "健康": 80, "智力": 60, "体力": 70, "魅力": 50 };
-  const focusedIndex = Math.max(0, Math.min(currentPageIndex, pages.length - 1));
+  const hasPages = pages.length > 0;
+  const atStart = currentPageIndex <= 0;
+  const atEnd = !hasPages || currentPageIndex >= pages.length - 1;
   return `
-    <main class="reader-canvas">
-      <section class="narrative-stream-zone">
-        ${pages.length ? pages.map((page, index) => `
-          <article class="epic-page-card ${index === focusedIndex ? "focused-chapter" : ""}">
-            <span class="chapter-badge">Chapter ${index + 1}</span>
-            <h2 class="chapter-title">${esc(page.era_label || "命运落笔")}</h2>
-            <div class="story-text-container">${streamStoryHTML(page.narrative, index === 0)}</div>
-            ${page.event ? `<div class="event"><b>变故 · </b>${esc(page.event)}</div>` : ""}
-            ${page.deltas?.length ? `<div class="deltas">${page.deltas.map((d) => `<span class="delta ${(d.d || 0) >= 0 ? "up" : "down"}">${esc(d.k)} ${(d.d || 0) >= 0 ? "+" : ""}${d.d}</span>`).join("")}</div>` : ""}
-            ${page.choiceMade ? `<div class="mychoice"><span class="label">朱批</span><span class="txt">${esc(page.choiceMade)}</span></div>` : ""}
-          </article>
-        `).join("") : `
-          <article class="epic-page-card focused-chapter">
-            <span class="chapter-badge">PROLOGUE</span>
-            <h2 class="chapter-title">序章：天命启封</h2>
-            <div class="story-text-container"><span class="dropcap-seal">命</span>运尚未落笔。此处将逐页留下你此生的印记。</div>
-          </article>
-        `}
-      </section>
+    <main class="reader">
+      <header id="topbar">
+        <button class="iconbtn" data-action="back-home" title="书案">⌂</button>
+        <div id="avatar">${esc(book.avatar || state.avatar || "卷")}</div>
+        <div id="whoami">
+          <div id="name">${esc(book.title || "未名之卷")}</div>
+          <div id="sub">${esc([state.oneline, state.world].filter(Boolean).join(" · ") || book.summaryLine || "命运尚未启封")}</div>
+        </div>
+        <div class="agebadge"><b>${state.age ?? "—"}</b><span>春秋</span></div>
+        <button class="iconbtn" data-action="open-stats" title="命格">☯</button>
+        <button class="iconbtn" data-action="open-relationships" title="人物">缘</button>
+        <button class="iconbtn" data-action="open-settings" title="设置">☰</button>
+      </header>
 
-      <aside class="destiny-loom-sidebar">
-        <div class="reader-identity">
-          <div id="avatar">${esc(book.avatar || state.avatar || "卷")}</div>
-          <div id="whoami">
-            <div id="name">${esc(book.title || "未名之卷")}</div>
-            <div id="sub">${esc([state.oneline, state.world].filter(Boolean).join(" · ") || book.summaryLine || "命运尚未启封")}</div>
+      <button class="nav-wing left ${atStart ? "disabled" : ""}" data-action="prev-page" title="上一卷">⟨</button>
+      <button class="nav-wing right ${atEnd ? "disabled" : ""}" data-action="next-page" title="下一卷">⟩</button>
+
+      <div id="main-book-frame">
+        <div id="book-viewport">
+          <div id="book-slider" style="transform:translateX(-${currentPageIndex * 100}%)">
+            ${hasPages ? pages.map(renderPage).join("") : renderWelcomePage()}
           </div>
         </div>
+      </div>
 
-        <div class="loom-section-title">☯ 当前命格</div>
-        ${Object.entries(stats).map(([key, value]) => renderPremiumStat(key, value)).join("")}
-
-        <div class="loom-section-title relationship-title">缘 · 书中人</div>
-        <div class="loom-relationships">
-          ${(state.relationships || []).length ? (state.relationships || []).map((rel) => `
-            <div class="loom-relation">
-              <span class="loom-relation-face">${esc(rel.emoji || "人")}</span>
-              <div>
-                <div class="loom-relation-name">${esc(rel.name)}</div>
-                <div class="loom-relation-note">${esc(rel.relation || "结缘")}${rel.note ? " · " + esc(rel.note) : ""}</div>
-              </div>
-            </div>
-          `).join("") : `<div class="loom-empty">孤身一人，红尘未遇</div>`}
-        </div>
-
-        <div class="loom-actions">
-          <button class="seal-btn" data-action="back-home">← 归还书案</button>
-          <button class="seal-btn" data-action="open-settings">笔墨设置</button>
-        </div>
-      </aside>
-
-      ${renderTerminalDock(book)}
+      ${renderDock(book)}
     </main>
-  `;
-}
-
-function renderPremiumStat(key: string, rawValue: unknown): string {
-  const value = Math.max(0, Math.min(100, Number(rawValue) || 0));
-  const cls = key === "健康" ? "hp" : key === "财富" ? "gold" : "";
-  return `
-    <div class="premium-stat-row ${cls}">
-      <div class="premium-stat-meta"><span>${esc(key)}</span><em>${value}</em></div>
-      <div class="luxury-bar-track"><div class="luxury-bar-fill" style="width:${value}%"></div></div>
-    </div>
-  `;
-}
-
-function renderTerminalDock(book: BookRecord): string {
-  const state = book.state;
-  const dead = book.status === "finished" || !!state.dead;
-  const choices = state.choices || [];
-  return `
-    <nav class="decision-terminal">
-      <div class="terminal-header">
-        <span class="terminal-title">${dead ? "❧ 终章笺已成卷" : busy ? "墨迹未干" : "执笔抉择"}</span>
-        ${!dead && !busy ? `<button id="newchoices" data-action="reroll">换一批天命 ↺</button>` : ""}
-      </div>
-      <div class="terminal-choices-list">
-        ${busy ? `<div class="terminal-waiting">命运正在落墨，请稍候。</div>` : dead ? `
-          <button class="terminal-choice-item finale-choice" data-action="open-finale">✦ 打开终章结局判定 ✦</button>
-        ` : choices.length ? choices.map((choice, index) => `
-          <button class="terminal-choice-item" data-action="choice" data-choice="${attr(choice)}">
-            <span class="choice-index">${index + 1}</span>
-            <span>${esc(choice)}</span>
-          </button>
-        `).join("") : `<div class="terminal-waiting">此刻尚无岔路，仍可亲笔写下去向。</div>`}
-      </div>
-      ${!dead && !busy ? `
-        <div class="terminal-free-row">
-          <input id="freein" class="terminal-free-input" placeholder="或，亲笔写下你的去向…" autocomplete="off" />
-          <button id="sendbtn" class="terminal-send" data-action="send-free">书</button>
-        </div>
-      ` : ""}
-    </nav>
   `;
 }
 
@@ -1020,14 +949,9 @@ function applyState(book: BookRecord, state: LifeState | null): void {
 }
 
 function updateActiveStory(page: BookPage): void {
-  const pageIndex = activeBook?.pages.indexOf(page) ?? 0;
-  const story = document.querySelector<HTMLElement>(".epic-page-card.focused-chapter .story-text-container")
-    || document.querySelector<HTMLElement>(".book-page.active .story");
-  const title = document.querySelector<HTMLElement>(".epic-page-card.focused-chapter .chapter-title")
-    || document.querySelector<HTMLElement>(".book-page.active .era .ttl");
-  if (story) story.innerHTML = story.classList.contains("story-text-container")
-    ? streamStoryHTML(page.narrative, pageIndex === 0)
-    : storyHTML(page.narrative);
+  const story = document.querySelector<HTMLElement>(".book-page.active .story");
+  const title = document.querySelector<HTMLElement>(".book-page.active .era .ttl");
+  if (story) story.innerHTML = storyHTML(page.narrative);
   if (title) title.textContent = page.era_label;
 }
 
@@ -1099,15 +1023,6 @@ function storyHTML(narrative: string): string {
   const [first] = Array.from(text);
   const rest = text.slice(first.length);
   return `<span class="dropcap">${esc(first)}</span>${esc(rest)}`;
-}
-
-function streamStoryHTML(narrative: string, dropcap: boolean): string {
-  const text = String(narrative || "");
-  if (!text) return "";
-  if (!dropcap) return esc(text);
-  const [first] = Array.from(text);
-  const rest = text.slice(first.length);
-  return `<span class="dropcap-seal">${esc(first)}</span>${esc(rest)}`;
 }
 
 function renderStatLine(key: string, value: number): string {
