@@ -29,6 +29,8 @@ let modal: Modal = null;
 let busy = false;
 let currentPageIndex = 0;
 let dockExpanded = false;
+let homeBookEngineCleanup: (() => void) | null = null;
+let globalInkEngineCleanup: (() => void) | null = null;
 
 app.addEventListener("click", (event) => void handleClick(event));
 app.addEventListener("submit", (event) => void handleSubmit(event));
@@ -53,13 +55,92 @@ async function refreshBooks(): Promise<void> {
 }
 
 function renderApp(): void {
-  app.innerHTML = `
-    <div id="backdrop"></div>
-    ${view === "home" ? renderHome() : ""}
-    ${view === "shelf" ? renderShelf() : ""}
-    ${view === "reader" ? renderReader() : ""}
-    ${renderModal()}
-  `;
+  let homeSandbox = app.querySelector<HTMLElement>("#view-sandbox-home");
+  let shelfSandbox = app.querySelector<HTMLElement>("#view-sandbox-shelf");
+  let readerSandbox = app.querySelector<HTMLElement>("#view-sandbox-reader");
+
+  if (!homeSandbox || !shelfSandbox || !readerSandbox) {
+    app.innerHTML = `
+      <svg class="material-shaders" aria-hidden="true" focusable="false">
+        <defs>
+          <filter id="epic-parchment-shader" x="0%" y="0%" width="100%" height="100%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="3" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.8" xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+          <filter id="epic-gold-foil" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.2" numOctaves="2" result="noise" />
+            <feColorMatrix type="matrix" values="1 0 0 0 0  0 .7 0 0 0  0 .4 0 0 0  0 0 0 1 0" in="noise" result="coloredNoise" />
+            <feComposite operator="in" in2="SourceGraphic" result="texturedGold" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation="1" result="blur" />
+            <feSpecularLighting in="blur" surfaceScale="3" specularExponent="22" lighting-color="#fff" result="light">
+              <feDistantLight azimuth="45" elevation="60" />
+            </feSpecularLighting>
+            <feComposite operator="in" in2="SourceGraphic" result="specular" />
+            <feMerge>
+              <feMergeNode in="texturedGold" />
+              <feMergeNode in="specular" />
+            </feMerge>
+          </filter>
+          <filter id="epic-gold-foil-press" x="-10%" y="-10%" width="120%" height="120%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.15" numOctaves="2" result="noise" />
+            <feColorMatrix type="matrix" values="1 0 0 0 0  0 .75 0 0 0  0 .45 0 0 0  0 0 0 1 0" in="noise" result="gold" />
+            <feComposite operator="in" in2="SourceGraphic" result="textured" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation=".5" result="blur" />
+            <feSpecularLighting in="blur" surfaceScale="2" specularExponent="30" lighting-color="#fff" result="light">
+              <feDistantLight azimuth="45" elevation="60" />
+            </feSpecularLighting>
+            <feComposite operator="in" in2="SourceGraphic" result="spec" />
+            <feMerge>
+              <feMergeNode in="textured" />
+              <feMergeNode in="spec" />
+            </feMerge>
+          </filter>
+        </defs>
+      </svg>
+      <canvas id="fullscreen-ink-smoke-canvas" class="ink-fluid-overlay"></canvas>
+      <div id="backdrop"></div>
+      <div id="view-sandbox-home" class="view-sandbox"></div>
+      <div id="view-sandbox-shelf" class="view-sandbox"></div>
+      <div id="view-sandbox-reader" class="view-sandbox"></div>
+    `;
+    homeSandbox = app.querySelector<HTMLElement>("#view-sandbox-home")!;
+    shelfSandbox = app.querySelector<HTMLElement>("#view-sandbox-shelf")!;
+    readerSandbox = app.querySelector<HTMLElement>("#view-sandbox-reader")!;
+    globalInkEngineCleanup?.();
+    globalInkEngineCleanup = initGlobalEtherealSmokeSolver();
+  }
+
+  if (view === "home") {
+    stopHomeBookEngine();
+    homeSandbox.innerHTML = renderHome();
+    requestAnimationFrame(() => {
+      homeBookEngineCleanup = initTopTierInteractiveBook();
+    });
+  } else {
+    stopHomeBookEngine();
+  }
+  if (view === "shelf") shelfSandbox.innerHTML = renderShelf();
+  if (view === "reader") {
+    readerSandbox.innerHTML = renderReader();
+    if (!modal) {
+      setTimeout(() => {
+        const stream = readerSandbox.querySelector<HTMLElement>(".narrative-stream-zone");
+        if (stream) stream.scrollTop = stream.scrollHeight;
+      }, 50);
+    }
+  }
+
+  homeSandbox.classList.toggle("active-view", view === "home");
+  shelfSandbox.classList.toggle("active-view", view === "shelf");
+  readerSandbox.classList.toggle("active-view", view === "reader");
+
+  app.querySelector(".modal-layer-global")?.remove();
+  if (modal) {
+    const layer = document.createElement("div");
+    layer.className = "modal-layer-global";
+    layer.innerHTML = renderModal();
+    app.appendChild(layer);
+  }
 }
 
 function renderHome(): string {
@@ -68,36 +149,326 @@ function renderHome(): string {
   const finished = books.filter((book) => book.status === "finished").length;
   return `
     <main class="home">
-      <header class="homebar">
-        <div class="brand-seal">卷</div>
-        <div>
-          <div class="brand-title">人生之书</div>
-          <div class="brand-sub">命册书斋</div>
-        </div>
-        <button class="iconbtn" data-action="open-settings" title="设置">☰</button>
-      </header>
-      <section class="desk">
-        <div class="shelf-shadow" aria-hidden="true">
-          ${books.slice(0, 10).map((book) => `<i style="--paper:${book.coverStyle.paper};--seal:${book.coverStyle.seal}"></i>`).join("")}
-        </div>
-        <div class="desk-book" aria-hidden="true">
-          <span class="book-ribbon"></span>
-          <span class="book-title-mark">人生之书</span>
-          <span class="book-seal">命</span>
-        </div>
+      <button class="iconbtn home-settings" data-action="open-settings" title="设置">☰</button>
+      <section class="home-left-panel">
+        <header class="brand-section">
+          <div class="brand-seal">卷</div>
+          <h1 class="brand-title">人生之书</h1>
+          <div class="brand-sub">一纸枯荣 · 执笔观浮生</div>
+        </header>
+
         <div class="home-actions">
-          <button class="seal-btn primary" data-action="start-new">起新卷</button>
-          <button class="seal-btn" data-action="continue-latest" ${latest ? "" : "disabled"}>续前卷</button>
-          <button class="seal-btn" data-action="open-shelf">入书柜</button>
+          <button class="seal-btn primary" data-action="start-new">起 新 卷</button>
+          <button class="seal-btn" data-action="continue-latest" ${latest ? "" : "disabled"}>续 前 卷</button>
+          <button class="seal-btn" data-action="open-shelf">入 书 柜</button>
         </div>
+
         <div class="ledger-strip">
-          <span>藏书 ${books.length}</span>
-          <span>未竟 ${ongoing}</span>
-          <span>终章 ${finished}</span>
+          <span>藏书 <strong class="num-all">${books.length}</strong></span>
+          <span>未竟 <strong class="num-ongoing">${ongoing}</strong></span>
+          <span>终章 <strong class="num-finished">${finished}</strong></span>
+        </div>
+      </section>
+
+      <section class="home-right-panel" id="interactive-desk-zone" aria-hidden="true">
+        <div class="stage-3d" id="mesh-stage">
+          <div class="mesh-shadow-floor"></div>
+          <div class="book-mesh-cube">
+            <div class="mesh-thickness-edge edge-spine"></div>
+            <div class="mesh-thickness-edge edge-right"></div>
+            <div class="mesh-thickness-edge edge-top"></div>
+            <div class="mesh-thickness-edge edge-bottom"></div>
+            <div class="mesh-face cover-back"></div>
+            <div class="mesh-face cover-front">
+              <div class="thread-binding">
+                <i class="hole" style="top: 12%"></i>
+                <i class="hole" style="top: 37%"></i>
+                <i class="hole" style="top: 63%"></i>
+                <i class="hole" style="top: 88%"></i>
+                <i class="thread-spine" style="top: 12.5%"></i>
+                <i class="thread-spine" style="top: 37.5%"></i>
+                <i class="thread-spine" style="top: 63.5%"></i>
+                <i class="thread-spine" style="top: 88.5%"></i>
+                <i class="thread-vertical"></i>
+              </div>
+              <div class="book-inscription-strip">
+                <h2 class="book-title-mesh">人生之书</h2>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
   `;
+}
+
+function stopHomeBookEngine(): void {
+  if (!homeBookEngineCleanup) return;
+  homeBookEngineCleanup();
+  homeBookEngineCleanup = null;
+}
+
+function initTopTierInteractiveBook(): (() => void) | null {
+  const zone = document.querySelector<HTMLElement>("#interactive-desk-zone");
+  const stage = document.querySelector<HTMLElement>("#mesh-stage");
+  if (!zone || !stage) return null;
+
+  const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let destroyed = false;
+  let matrixFrame = 0;
+  let currentX = 18;
+  let currentY = -8;
+  let targetX = 18;
+  let targetY = -8;
+
+  const onPointerMove = (event: PointerEvent): void => {
+    if (reducedMotion) return;
+    const rect = zone.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    targetY = -8 + ((x / rect.width) - .5) * 16;
+    targetX = 18 - (((y / rect.height) - .5) * 12);
+  };
+
+  const onPointerLeave = (): void => {
+    targetX = 18;
+    targetY = -8;
+  };
+
+  const loopMatrix = (): void => {
+    if (destroyed) return;
+    currentX += (targetX - currentX) * .05;
+    currentY += (targetY - currentY) * .05;
+    stage.style.transform = `rotateX(${currentX}deg) rotateY(${currentY}deg)`;
+    matrixFrame = requestAnimationFrame(loopMatrix);
+  };
+
+  zone.addEventListener("pointermove", onPointerMove);
+  zone.addEventListener("pointerleave", onPointerLeave);
+  loopMatrix();
+
+  return () => {
+    destroyed = true;
+    zone.removeEventListener("pointermove", onPointerMove);
+    zone.removeEventListener("pointerleave", onPointerLeave);
+    cancelAnimationFrame(matrixFrame);
+  };
+}
+
+function initGlobalEtherealSmokeSolver(): (() => void) | null {
+  const canvas = document.querySelector<HTMLCanvasElement>("#fullscreen-ink-smoke-canvas");
+  const context = canvas?.getContext("2d");
+  if (!canvas || !context) return null;
+  const ctx: CanvasRenderingContext2D = context;
+  const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let destroyed = false;
+  let frame = 0;
+  let lastPointerMoveAt = 0;
+  let targetX = -1000;
+  let targetY = -1000;
+  let brushX = -1000;
+  let brushY = -1000;
+  let lastBrushX = -1000;
+  let lastBrushY = -1000;
+  let brushVx = 0;
+  let brushVy = 0;
+  let hasMoved = false;
+
+  type PhysicalBristle = {
+    offsetX: number;
+    offsetY: number;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    vx: number;
+    vy: number;
+    spring: number;
+    friction: number;
+    thickness: number;
+    color: string;
+  };
+
+  const bristles: PhysicalBristle[] = Array.from({ length: 300 }, () => {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.pow(Math.random(), 2.6) * 16;
+    const x = -1000;
+    const y = -1000;
+    return {
+      offsetX: Math.cos(angle) * radius,
+      offsetY: Math.sin(angle) * radius,
+      x1: x,
+      y1: y,
+      x2: x,
+      y2: y,
+      vx: 0,
+      vy: 0,
+      spring: .15 + Math.random() * .4,
+      friction: .45 + Math.random() * .4,
+      thickness: .45 + Math.random() * 2.45,
+      color: `rgba(${Math.round(12 + Math.random() * 14)}, ${Math.round(8 + Math.random() * 9)}, ${Math.round(5 + Math.random() * 5)}, `,
+    };
+  });
+
+  const resize = (): void => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
+    canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+
+  const resetPointer = (): void => {
+    hasMoved = false;
+    targetX = -1000;
+    targetY = -1000;
+    brushX = -1000;
+    brushY = -1000;
+    lastBrushX = -1000;
+    lastBrushY = -1000;
+    brushVx = 0;
+    brushVy = 0;
+    for (const bristle of bristles) {
+      bristle.x1 = -1000;
+      bristle.y1 = -1000;
+      bristle.x2 = -1000;
+      bristle.y2 = -1000;
+      bristle.vx = 0;
+      bristle.vy = 0;
+    }
+  };
+
+  const appendMove = (clientX: number, clientY: number): void => {
+    if (reducedMotion) return;
+    targetX = clientX;
+    targetY = clientY;
+    if (!hasMoved) {
+      brushX = targetX;
+      brushY = targetY;
+      lastBrushX = targetX;
+      lastBrushY = targetY;
+      for (const bristle of bristles) {
+        const x = targetX + bristle.offsetX;
+        const y = targetY + bristle.offsetY;
+        bristle.x1 = x;
+        bristle.y1 = y;
+        bristle.x2 = x;
+        bristle.y2 = y;
+        bristle.vx = 0;
+        bristle.vy = 0;
+      }
+      hasMoved = true;
+    }
+  };
+
+  const onPointerMove = (event: PointerEvent): void => {
+    if ("isPrimary" in event && !event.isPrimary) return;
+    lastPointerMoveAt = performance.now();
+    appendMove(event.clientX, event.clientY);
+  };
+
+  const onMouseMove = (event: MouseEvent): void => {
+    if (performance.now() - lastPointerMoveAt < 80) return;
+    appendMove(event.clientX, event.clientY);
+  };
+
+  const onVisibilityChange = (): void => {
+    if (document.hidden) resetPointer();
+  };
+
+  const loop = (): void => {
+    if (destroyed) return;
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "rgba(0, 0, 0, .008)";
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+    ctx.globalCompositeOperation = "source-over";
+
+    if (hasMoved) {
+      lastBrushX = brushX;
+      lastBrushY = brushY;
+      const pullX = (targetX - brushX) * .2;
+      const pullY = (targetY - brushY) * .2;
+      brushVx = (brushVx + pullX) * .55;
+      brushVy = (brushVy + pullY) * .55;
+      brushX += brushVx;
+      brushY += brushVy;
+
+      const speed = Math.hypot(brushVx, brushVy);
+
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      const coreThickness = Math.max(0, 22 - speed * .6);
+      const coreAlpha = Math.max(0, .12 - speed * .003);
+      if (speed > .08 && coreThickness > 0 && coreAlpha > 0) {
+        ctx.beginPath();
+        ctx.moveTo(lastBrushX, lastBrushY);
+        ctx.lineTo(brushX, brushY);
+        ctx.lineWidth = coreThickness;
+        ctx.strokeStyle = `rgba(18, 11, 6, ${coreAlpha})`;
+        ctx.stroke();
+      }
+
+      const spread = .8 + Math.min(speed * .02, .6);
+      const bristleAlpha = Math.max(.015, .08 - speed * .0015);
+      for (const bristle of bristles) {
+        const targetBristleX = brushX + bristle.offsetX * spread;
+        const targetBristleY = brushY + bristle.offsetY * spread;
+        bristle.x1 = bristle.x2;
+        bristle.y1 = bristle.y2;
+        bristle.vx += (targetBristleX - bristle.x2) * bristle.spring;
+        bristle.vx += (Math.random() - .5) * speed * .04;
+        bristle.vx *= bristle.friction;
+        bristle.vy += (targetBristleY - bristle.y2) * bristle.spring;
+        bristle.vy += (Math.random() - .5) * speed * .04;
+        bristle.vy *= bristle.friction;
+        bristle.x2 += bristle.vx;
+        bristle.y2 += bristle.vy;
+
+        if (speed > .08) {
+          ctx.beginPath();
+          ctx.moveTo(bristle.x1, bristle.y1);
+          ctx.lineTo(bristle.x2, bristle.y2);
+          ctx.lineWidth = bristle.thickness;
+          ctx.strokeStyle = `${bristle.color}${bristleAlpha})`;
+          ctx.stroke();
+        }
+      }
+
+      if (speed > .08 && speed < 1.5) {
+        const radius = 12 + Math.random() * 20;
+        const x = brushX + (Math.random() - .5) * 8;
+        const y = brushY + (Math.random() - .5) * 8;
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+        gradient.addColorStop(0, "rgba(18, 11, 6, .014)");
+        gradient.addColorStop(.42, "rgba(38, 25, 14, .005)");
+        gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+      }
+    }
+
+    frame = requestAnimationFrame(loop);
+  };
+
+  resize();
+  window.addEventListener("resize", resize);
+  window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("mousemove", onMouseMove);
+  window.addEventListener("pointerleave", resetPointer);
+  window.addEventListener("blur", resetPointer);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  loop();
+
+  return () => {
+    destroyed = true;
+    window.removeEventListener("resize", resize);
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("pointerleave", resetPointer);
+    window.removeEventListener("blur", resetPointer);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    cancelAnimationFrame(frame);
+  };
 }
 
 function renderShelf(): string {
@@ -153,40 +524,106 @@ function renderBookCard(book: BookRecord): string {
 
 function renderReader(): string {
   const book = activeBook;
-  if (!book) return renderHome();
+  if (!book) return "";
   const state = book.state;
   const pages = book.pages;
-  const hasPages = pages.length > 0;
-  const atStart = currentPageIndex <= 0;
-  const atEnd = !hasPages || currentPageIndex >= pages.length - 1;
+  const stats = Object.keys(state.stats || {}).length ? state.stats || {} : { "健康": 80, "智力": 60, "体力": 70, "魅力": 50 };
+  const focusedIndex = Math.max(0, Math.min(currentPageIndex, pages.length - 1));
   return `
-    <main class="reader">
-      <header id="topbar">
-        <button class="iconbtn" data-action="back-home" title="书案">⌂</button>
-        <div id="avatar">${esc(book.avatar || state.avatar || "卷")}</div>
-        <div id="whoami">
-          <div id="name">${esc(book.title || "未名之卷")}</div>
-          <div id="sub">${esc([state.oneline, state.world].filter(Boolean).join(" · ") || book.summaryLine || "命运尚未启封")}</div>
-        </div>
-        <div class="agebadge"><b>${state.age ?? "—"}</b><span>春秋</span></div>
-        <button class="iconbtn" data-action="open-stats" title="命格">☯</button>
-        <button class="iconbtn" data-action="open-relationships" title="人物">缘</button>
-        <button class="iconbtn" data-action="open-settings" title="设置">☰</button>
-      </header>
+    <main class="reader-canvas">
+      <section class="narrative-stream-zone">
+        ${pages.length ? pages.map((page, index) => `
+          <article class="epic-page-card ${index === focusedIndex ? "focused-chapter" : ""}">
+            <span class="chapter-badge">Chapter ${index + 1}</span>
+            <h2 class="chapter-title">${esc(page.era_label || "命运落笔")}</h2>
+            <div class="story-text-container">${streamStoryHTML(page.narrative, index === 0)}</div>
+            ${page.event ? `<div class="event"><b>变故 · </b>${esc(page.event)}</div>` : ""}
+            ${page.deltas?.length ? `<div class="deltas">${page.deltas.map((d) => `<span class="delta ${(d.d || 0) >= 0 ? "up" : "down"}">${esc(d.k)} ${(d.d || 0) >= 0 ? "+" : ""}${d.d}</span>`).join("")}</div>` : ""}
+            ${page.choiceMade ? `<div class="mychoice"><span class="label">朱批</span><span class="txt">${esc(page.choiceMade)}</span></div>` : ""}
+          </article>
+        `).join("") : `
+          <article class="epic-page-card focused-chapter">
+            <span class="chapter-badge">PROLOGUE</span>
+            <h2 class="chapter-title">序章：天命启封</h2>
+            <div class="story-text-container"><span class="dropcap-seal">命</span>运尚未落笔。此处将逐页留下你此生的印记。</div>
+          </article>
+        `}
+      </section>
 
-      <button class="nav-wing left ${atStart ? "disabled" : ""}" data-action="prev-page" title="上一卷">⟨</button>
-      <button class="nav-wing right ${atEnd ? "disabled" : ""}" data-action="next-page" title="下一卷">⟩</button>
-
-      <div id="main-book-frame">
-        <div id="book-viewport">
-          <div id="book-slider" style="transform:translateX(-${currentPageIndex * 100}%)">
-            ${hasPages ? pages.map(renderPage).join("") : renderWelcomePage()}
+      <aside class="destiny-loom-sidebar">
+        <div class="reader-identity">
+          <div id="avatar">${esc(book.avatar || state.avatar || "卷")}</div>
+          <div id="whoami">
+            <div id="name">${esc(book.title || "未名之卷")}</div>
+            <div id="sub">${esc([state.oneline, state.world].filter(Boolean).join(" · ") || book.summaryLine || "命运尚未启封")}</div>
           </div>
         </div>
-      </div>
 
-      ${renderDock(book)}
+        <div class="loom-section-title">☯ 当前命格</div>
+        ${Object.entries(stats).map(([key, value]) => renderPremiumStat(key, value)).join("")}
+
+        <div class="loom-section-title relationship-title">缘 · 书中人</div>
+        <div class="loom-relationships">
+          ${(state.relationships || []).length ? (state.relationships || []).map((rel) => `
+            <div class="loom-relation">
+              <span class="loom-relation-face">${esc(rel.emoji || "人")}</span>
+              <div>
+                <div class="loom-relation-name">${esc(rel.name)}</div>
+                <div class="loom-relation-note">${esc(rel.relation || "结缘")}${rel.note ? " · " + esc(rel.note) : ""}</div>
+              </div>
+            </div>
+          `).join("") : `<div class="loom-empty">孤身一人，红尘未遇</div>`}
+        </div>
+
+        <div class="loom-actions">
+          <button class="seal-btn" data-action="back-home">← 归还书案</button>
+          <button class="seal-btn" data-action="open-settings">笔墨设置</button>
+        </div>
+      </aside>
+
+      ${renderTerminalDock(book)}
     </main>
+  `;
+}
+
+function renderPremiumStat(key: string, rawValue: unknown): string {
+  const value = Math.max(0, Math.min(100, Number(rawValue) || 0));
+  const cls = key === "健康" ? "hp" : key === "财富" ? "gold" : "";
+  return `
+    <div class="premium-stat-row ${cls}">
+      <div class="premium-stat-meta"><span>${esc(key)}</span><em>${value}</em></div>
+      <div class="luxury-bar-track"><div class="luxury-bar-fill" style="width:${value}%"></div></div>
+    </div>
+  `;
+}
+
+function renderTerminalDock(book: BookRecord): string {
+  const state = book.state;
+  const dead = book.status === "finished" || !!state.dead;
+  const choices = state.choices || [];
+  return `
+    <nav class="decision-terminal">
+      <div class="terminal-header">
+        <span class="terminal-title">${dead ? "❧ 终章笺已成卷" : busy ? "墨迹未干" : "执笔抉择"}</span>
+        ${!dead && !busy ? `<button id="newchoices" data-action="reroll">换一批天命 ↺</button>` : ""}
+      </div>
+      <div class="terminal-choices-list">
+        ${busy ? `<div class="terminal-waiting">命运正在落墨，请稍候。</div>` : dead ? `
+          <button class="terminal-choice-item finale-choice" data-action="open-finale">✦ 打开终章结局判定 ✦</button>
+        ` : choices.length ? choices.map((choice, index) => `
+          <button class="terminal-choice-item" data-action="choice" data-choice="${attr(choice)}">
+            <span class="choice-index">${index + 1}</span>
+            <span>${esc(choice)}</span>
+          </button>
+        `).join("") : `<div class="terminal-waiting">此刻尚无岔路，仍可亲笔写下去向。</div>`}
+      </div>
+      ${!dead && !busy ? `
+        <div class="terminal-free-row">
+          <input id="freein" class="terminal-free-input" placeholder="或，亲笔写下你的去向…" autocomplete="off" />
+          <button id="sendbtn" class="terminal-send" data-action="send-free">书</button>
+        </div>
+      ` : ""}
+    </nav>
   `;
 }
 
@@ -583,9 +1020,14 @@ function applyState(book: BookRecord, state: LifeState | null): void {
 }
 
 function updateActiveStory(page: BookPage): void {
-  const story = document.querySelector<HTMLElement>(".book-page.active .story");
-  const title = document.querySelector<HTMLElement>(".book-page.active .era .ttl");
-  if (story) story.innerHTML = storyHTML(page.narrative);
+  const pageIndex = activeBook?.pages.indexOf(page) ?? 0;
+  const story = document.querySelector<HTMLElement>(".epic-page-card.focused-chapter .story-text-container")
+    || document.querySelector<HTMLElement>(".book-page.active .story");
+  const title = document.querySelector<HTMLElement>(".epic-page-card.focused-chapter .chapter-title")
+    || document.querySelector<HTMLElement>(".book-page.active .era .ttl");
+  if (story) story.innerHTML = story.classList.contains("story-text-container")
+    ? streamStoryHTML(page.narrative, pageIndex === 0)
+    : storyHTML(page.narrative);
   if (title) title.textContent = page.era_label;
 }
 
@@ -657,6 +1099,15 @@ function storyHTML(narrative: string): string {
   const [first] = Array.from(text);
   const rest = text.slice(first.length);
   return `<span class="dropcap">${esc(first)}</span>${esc(rest)}`;
+}
+
+function streamStoryHTML(narrative: string, dropcap: boolean): string {
+  const text = String(narrative || "");
+  if (!text) return "";
+  if (!dropcap) return esc(text);
+  const [first] = Array.from(text);
+  const rest = text.slice(first.length);
+  return `<span class="dropcap-seal">${esc(first)}</span>${esc(rest)}`;
 }
 
 function renderStatLine(key: string, value: number): string {
