@@ -284,6 +284,8 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
   let brushVx = 0;
   let brushVy = 0;
   let hasMoved = false;
+  let inkVolatilityTimer: number | null = null;
+  let inkClearTimer: number | null = null;
 
   type PhysicalBristle = {
     offsetX: number;
@@ -348,18 +350,54 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
     }
   };
 
+  const restoreCanvasOpacity = (): void => {
+    if (inkClearTimer !== null) {
+      window.clearTimeout(inkClearTimer);
+      inkClearTimer = null;
+    }
+    canvas.style.transition = "";
+    canvas.style.opacity = "";
+  };
+
+  const scheduleInkFade = (): void => {
+    if (reducedMotion) return;
+    if (inkVolatilityTimer !== null) window.clearTimeout(inkVolatilityTimer);
+    restoreCanvasOpacity();
+    inkVolatilityTimer = window.setTimeout(() => {
+      canvas.style.transition = "opacity 3s ease";
+      canvas.style.opacity = "0";
+      inkClearTimer = window.setTimeout(() => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        restoreCanvasOpacity();
+      }, 3000);
+      inkVolatilityTimer = null;
+    }, 8000);
+  };
+
+  const createInkSplash = (x: number, y: number): void => {
+    if (reducedMotion) return;
+    const radius = 10 + Math.random() * 14;
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, "rgba(18, 11, 6, .055)");
+    gradient.addColorStop(.35, "rgba(38, 25, 14, .018)");
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  };
+
   const appendMove = (clientX: number, clientY: number): void => {
     if (reducedMotion) return;
-    targetX = clientX;
-    targetY = clientY;
     if (!hasMoved) {
-      brushX = targetX;
-      brushY = targetY;
-      lastBrushX = targetX;
-      lastBrushY = targetY;
+      targetX = clientX;
+      targetY = clientY;
+      brushX = clientX;
+      brushY = clientY;
+      lastBrushX = clientX;
+      lastBrushY = clientY;
       for (const bristle of bristles) {
-        const x = targetX + bristle.offsetX;
-        const y = targetY + bristle.offsetY;
+        const x = clientX + bristle.offsetX;
+        const y = clientY + bristle.offsetY;
         bristle.x1 = x;
         bristle.y1 = y;
         bristle.x2 = x;
@@ -368,7 +406,18 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
         bristle.vy = 0;
       }
       hasMoved = true;
+      createInkSplash(clientX, clientY);
+      scheduleInkFade();
+      return;
     }
+
+    const dx = clientX - brushX;
+    const dy = clientY - brushY;
+    if (Math.hypot(dx, dy) < 2) return;
+
+    targetX = clientX;
+    targetY = clientY;
+    scheduleInkFade();
   };
 
   const onPointerDown = (event: PointerEvent): void => {
@@ -396,7 +445,7 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
   const loop = (): void => {
     if (destroyed) return;
     ctx.globalCompositeOperation = "destination-out";
-    ctx.fillStyle = "rgba(0, 0, 0, .008)";
+    ctx.fillStyle = "rgba(0, 0, 0, .002)";
     ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
     ctx.globalCompositeOperation = "source-over";
 
@@ -482,6 +531,9 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
 
   return () => {
     destroyed = true;
+    if (inkVolatilityTimer !== null) window.clearTimeout(inkVolatilityTimer);
+    if (inkClearTimer !== null) window.clearTimeout(inkClearTimer);
+    restoreCanvasOpacity();
     window.removeEventListener("resize", resize);
     window.removeEventListener("pointerdown", onPointerDown);
     window.removeEventListener("pointermove", onPointerMove);

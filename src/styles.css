@@ -5016,6 +5016,10 @@ body {
   animation: inkBleed .8s cubic-bezier(.16, 1, .3, 1) .45s forwards;
 }
 
+.ink-fluid-overlay {
+  touch-action: none;
+}
+
 /* =========================================
    移动端自适应：化长卷为竹简 (Mobile Adaptation)
    ========================================= */
