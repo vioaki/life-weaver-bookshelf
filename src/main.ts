@@ -706,17 +706,36 @@ function renderRelationshipsModal(): string {
 function renderFinaleModal(): string {
   const book = activeBook;
   const finale = book?.finale || book?.state.death || {};
+  const statsHTML = renderFinalStats(book?.state);
+
   return `
     <div id="death" class="on">
-      <div class="skull">❧</div>
-      <h1>此 生 终 章</h1>
-      <div class="endmark">—— 全 书 完 ——</div>
-      <div class="title">${esc(finale.title || book?.title || "无名的一生")}</div>
-      <div class="ages">享年 ${book?.state.age ?? "?"} 岁 · 死因：${esc(finale.cause || "未知")}</div>
-      <div class="sum">${esc(finale.summary || "")}${finale.analysis ? "\n\n【性格剖析】" + esc(finale.analysis) : ""}</div>
-      <div class="finals">${renderFinalStats(book?.state)}</div>
-      <button class="btn ghost" data-action="close-modal">合上终章</button>
-      <button class="btn primary" data-action="reincarnate">✦ 转世 · 另起一卷</button>
+      <div class="death-scroll">
+        <div class="death-zen-circle"></div>
+
+        <div class="death-header">
+          <h1>此生已矣 · 盖棺定论</h1>
+        </div>
+
+        <div class="death-title">${esc(finale.title || book?.title || "无名的一生")}</div>
+        <div class="death-meta">享年 ${book?.state.age ?? "?"} 春秋 <span>·</span> 命绝于：${esc(finale.cause || "未知")}</div>
+
+        <div class="death-eulogy">
+          <p>${esc(finale.summary || "")}</p>
+          ${finale.analysis ? `<p class="analysis"><strong>【判词】</strong>${esc(finale.analysis)}</p>` : ""}
+        </div>
+
+        <div class="death-karma">
+          <div class="karma-title">一生因果</div>
+          <div class="finals">${statsHTML}</div>
+        </div>
+
+        <div class="death-actions">
+          <button class="action-text" data-action="close-modal">默默合卷</button>
+          <div class="action-divider"></div>
+          <button class="action-seal" data-action="reincarnate">重入轮回</button>
+        </div>
+      </div>
     </div>
   `;
 }
