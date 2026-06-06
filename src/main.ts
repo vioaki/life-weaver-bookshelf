@@ -15,7 +15,7 @@ import {
 } from "./storage";
 import type { AppConfig, BookPage, BookRecord, ChatMessage, LifeState, View } from "./types";
 
-type Modal = null | "settings" | "stats" | "relationships" | "finale";
+type Modal = null | "settings" | "stats" | "relationships" | "finale" | "inspect";
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
 if (!appRoot) throw new Error("Missing #app root");
@@ -29,6 +29,7 @@ let modal: Modal = null;
 let busy = false;
 let currentPageIndex = 0;
 let dockExpanded = false;
+let inspectingBookId: string | null = null;
 let homeBookEngineCleanup: (() => void) | null = null;
 let globalInkEngineCleanup: (() => void) | null = null;
 
@@ -470,40 +471,34 @@ function renderShelf(): string {
   return `
     <main class="shelf-page">
       <header class="viewbar">
-        <button class="ghost-link" data-action="back-home">← 书案</button>
+        <button class="ghost-link" data-action="back-home">归案</button>
         <div>
-          <div class="view-title">书柜</div>
-          <div class="view-sub">${books.length ? `共 ${books.length} 卷` : "尚无藏书"}</div>
+          <div class="view-title">藏书阁</div>
         </div>
         <div class="shelf-actions">
           <button class="seal-mini" data-action="start-new">起新卷</button>
-          <button class="iconbtn" data-action="open-settings" title="设置">☰</button>
         </div>
       </header>
-      <section class="bookcase ${books.length ? "" : "empty-case"}">
-        ${books.length ? books.map(renderBookCard).join("") : `<div class="empty-bookcase">书柜尚空</div>`}
+      <section class="bookcase-rack ${books.length ? "" : "empty-case"}">
+        ${books.length ? books.map(renderBookSpine).join("") : `<div class="empty-bookcase">藏经阁尚空</div>`}
       </section>
     </main>
   `;
 }
 
-function renderBookCard(book: BookRecord): string {
-  const age = book.state.age != null ? `${book.state.age}岁` : "年岁未详";
-  const statusText = book.status === "finished" ? "终" : "续";
-  const note = book.summaryLine || `${book.world} · ${age}`;
+function renderBookSpine(book: BookRecord): string {
+  const isFinished = book.status === "finished";
   return `
-    <article class="book-card" style="--paper:${book.coverStyle.paper};--seal:${book.coverStyle.seal}">
-      <button class="book-spine" data-action="read-book" data-id="${book.id}" title="${attr(note)}">
-        <span class="book-spine-mark">${esc(statusText)}</span>
-        <span class="book-spine-title">${esc(book.title)}</span>
-      </button>
-      <div class="book-actions" aria-label="${attr(book.title)}操作">
-        ${book.status === "ongoing" ? `<button data-action="continue-book" data-id="${book.id}">[续]</button>` : ""}
-        <button data-action="read-book" data-id="${book.id}">[阅]</button>
-        ${book.status === "finished" ? `<button data-action="open-finale-book" data-id="${book.id}">[终]</button>` : ""}
-        <button class="danger" data-action="delete-book" data-id="${book.id}">[焚]</button>
-      </div>
-    </article>
+    <div class="book-spine-item"
+      style="--paper:${book.coverStyle.paper}; --seal:${book.coverStyle.seal}"
+      data-action="inspect-book"
+      data-id="${book.id}"
+      role="button"
+      tabindex="0"
+      title="${attr(book.title)}">
+      <div class="spine-status-dot ${isFinished ? "finished" : "ongoing"}"></div>
+      <div class="spine-title">${esc(book.title)}</div>
+    </div>
   `;
 }
 
@@ -616,10 +611,44 @@ function renderChoiceDock(state: LifeState): string {
 
 function renderModal(): string {
   if (!modal) return "";
+  if (modal === "inspect") {
+    const book = inspectingBookId ? books.find((item) => item.id === inspectingBookId) : null;
+    if (book) return renderBookInspectModal(book);
+    return "";
+  }
   if (modal === "settings") return renderSettingsModal();
   if (modal === "stats") return renderStatsModal();
   if (modal === "relationships") return renderRelationshipsModal();
   return renderFinaleModal();
+}
+
+function renderBookInspectModal(book: BookRecord): string {
+  const age = book.state.age != null ? `${book.state.age}春秋` : "年岁未详";
+  return `
+    <div class="modal on inspect-modal" data-action="close-inspect">
+      <div class="inspect-stage" aria-label="书本详情">
+        <div class="inspect-book-cover" style="--paper:${book.coverStyle.paper}; --seal:${book.coverStyle.seal}">
+          <div class="cover-binding"></div>
+          <div class="cover-label">
+            <h2 class="cover-title">${esc(book.title)}</h2>
+          </div>
+        </div>
+
+        <div class="inspect-info">
+          <div class="info-meta">${esc(book.protagonist || "无名者")} · ${esc(book.world)}</div>
+          <div class="info-summary">${esc(book.summaryLine || age)}</div>
+          <div class="info-time">落笔于 ${formatDate(book.updatedAt)}</div>
+
+          <div class="inspect-actions">
+            ${book.status === "ongoing" ? `<button class="action-btn" data-action="continue-book" data-id="${book.id}">续写本卷</button>` : ""}
+            <button class="action-btn" data-action="read-book" data-id="${book.id}">翻阅生平</button>
+            ${book.status === "finished" ? `<button class="action-btn" data-action="open-finale-book" data-id="${book.id}">查看终章</button>` : ""}
+            <button class="action-btn danger" data-action="delete-book" data-id="${book.id}">焚毁此卷</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderSettingsModal(): string {
@@ -704,6 +733,16 @@ async function handleClick(event: MouseEvent): Promise<void> {
     const clickedCloseButton = actionEl.tagName === "BUTTON";
     if (clickedBackdrop || clickedCloseButton) {
       modal = null;
+      inspectingBookId = null;
+      renderApp();
+    }
+    return;
+  }
+  if (action === "close-inspect") {
+    event.preventDefault();
+    if (target.classList.contains("inspect-modal")) {
+      modal = null;
+      inspectingBookId = null;
       renderApp();
     }
     return;
@@ -713,10 +752,12 @@ async function handleClick(event: MouseEvent): Promise<void> {
   if (action === "back-home") {
     view = "home";
     modal = null;
+    inspectingBookId = null;
     renderApp();
   } else if (action === "open-shelf") {
     view = "shelf";
     modal = null;
+    inspectingBookId = null;
     await refreshBooks();
     renderApp();
   } else if (action === "open-settings") {
@@ -732,7 +773,12 @@ async function handleClick(event: MouseEvent): Promise<void> {
     modal = "finale";
     dockExpanded = false;
     renderApp();
+  } else if (action === "inspect-book") {
+    inspectingBookId = actionEl.dataset.id || null;
+    modal = "inspect";
+    renderApp();
   } else if (action === "start-new" || action === "reincarnate") {
+    inspectingBookId = null;
     await startNewBook();
   } else if (action === "continue-latest") {
     const latest = books.find((book) => book.status === "ongoing") || books[0];
@@ -778,11 +824,17 @@ async function handleSubmit(event: SubmitEvent): Promise<void> {
 }
 
 async function handleKeyDown(event: KeyboardEvent): Promise<void> {
-  if (event.key !== "Enter") return;
   const target = event.target as HTMLElement;
-  if (target.id === "freein") {
+  if (event.key === "Enter" && target.id === "freein") {
     event.preventDefault();
     await sendFreeInput();
+    return;
+  }
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const actionEl = target.closest<HTMLElement>('[data-action="inspect-book"]');
+  if (actionEl) {
+    event.preventDefault();
+    actionEl.click();
   }
 }
 
@@ -832,6 +884,7 @@ async function openBook(id: string, openModal?: Modal): Promise<void> {
   setActiveBookId(book.id);
   view = "reader";
   modal = openModal || null;
+  inspectingBookId = null;
   currentPageIndex = Math.max(0, book.pages.length - 1);
   dockExpanded = false;
   renderApp();
@@ -843,6 +896,8 @@ async function burnBook(id: string): Promise<void> {
   if (!confirm(`焚毁${book.title}？此操作不可撤回。`)) return;
   await deleteBook(id);
   if (activeBook?.id === id) activeBook = null;
+  inspectingBookId = null;
+  modal = null;
   await refreshBooks();
   view = "shelf";
   renderApp();

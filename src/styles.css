@@ -3909,74 +3909,6 @@ body {
   text-underline-offset: 4px;
 }
 
-/* --- 书柜页：线装书意象 --- */
-.bookcase {
-  gap: 24px;
-}
-
-.book-card {
-  min-height: 180px;
-  border: 1px solid var(--line2);
-  border-radius: 2px;
-  background: transparent;
-  box-shadow: none;
-  transition: transform .4s ease, border-color .4s ease;
-}
-
-.book-card:hover {
-  border-color: var(--ink);
-  box-shadow: none;
-  transform: translateY(-2px);
-}
-
-.book-spine {
-  background: transparent;
-  border-right: 1px dashed var(--line2);
-  color: var(--ink);
-  font-size: 16px;
-  text-shadow: none;
-  writing-mode: vertical-rl;
-}
-
-.book-card-body {
-  padding: 16px 20px;
-}
-
-.book-card h2 {
-  margin: 10px 0;
-  color: var(--ink);
-  font-size: 22px;
-  letter-spacing: 2px;
-}
-
-.book-actions {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dotted var(--line);
-}
-
-.book-actions button {
-  padding: 4px 6px;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  color: var(--ink2);
-  font-size: 14px;
-}
-
-.book-actions button:hover {
-  background: transparent;
-  color: var(--seal);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-  transform: none;
-}
-
-.book-actions .danger {
-  background: transparent;
-  color: var(--seal);
-}
-
 /* --- 正文排版优化与墨晕动效 --- */
 @keyframes inkBleed {
   0% {
@@ -4372,171 +4304,261 @@ body {
 }
 
 /* =========================================
-   书柜页：藏书阁陈列索引
+   藏经阁书架 (The Bookshelf)
    ========================================= */
-.shelf-page .bookcase {
+.shelf-page {
+  padding-bottom: 0;
+}
+
+.bookcase-rack {
   position: relative;
   display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 80px;
-  min-height: 460px;
-  padding: 60px 10vw 76px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  min-height: 300px;
+  padding: 40px 60px;
+  border-bottom: 3px solid rgba(43, 33, 17, .4);
+  box-shadow: 0 10px 20px -10px rgba(0, 0, 0, .1);
 }
 
-.shelf-page .bookcase::-webkit-scrollbar {
-  display: none;
-}
-
-.shelf-page .bookcase::before {
-  content: "";
-  position: absolute;
-  inset: 34px 7vw auto;
-  height: 120px;
-  pointer-events: none;
-  background:
-    repeating-linear-gradient(104deg, transparent 0 18px, rgba(52, 39, 19, .025) 19px 20px),
-    linear-gradient(90deg, transparent, rgba(158, 43, 37, .045), transparent);
-  opacity: .65;
-}
-
-.shelf-page .bookcase.empty-case {
-  display: block;
-}
-
-.book-card {
+.book-spine-item {
   position: relative;
-  display: block !important;
-  flex: 0 0 120px;
-  width: 120px;
-  aspect-ratio: .35;
-  min-height: 330px;
-  padding: 0 !important;
-  border: none !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: 10px 10px 20px rgba(0, 0, 0, .1) !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 42px;
+  height: 220px;
+  padding: 16px 0;
+  border-radius: 3px;
+  background: var(--paper);
+  background-image: linear-gradient(to right, rgba(255, 255, 255, .1) 0%, rgba(0, 0, 0, .1) 15%, rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, .05) 85%, rgba(0, 0, 0, .2) 100%);
+  box-shadow: 4px 4px 10px rgba(0, 0, 0, .15), -1px 0 2px rgba(255, 255, 255, .3) inset;
   cursor: pointer;
   transform-origin: bottom center;
-  transition: transform .6s cubic-bezier(.2, 1, .3, 1), box-shadow .6s cubic-bezier(.2, 1, .3, 1);
+  transition: transform .4s cubic-bezier(.16, 1, .3, 1), box-shadow .4s ease;
 }
 
-.book-card:hover,
-.book-card:focus-within {
-  transform: translateY(-20px) rotate(-2deg);
-  box-shadow: 14px 18px 28px rgba(0, 0, 0, .13) !important;
+.book-spine-item:nth-child(even) {
+  height: 210px;
 }
 
-.book-spine {
-  position: relative;
-  box-sizing: border-box;
-  appearance: none;
-  -webkit-appearance: none;
+.book-spine-item:nth-child(3n) {
+  height: 230px;
+}
+
+.book-spine-item:nth-child(5n) {
+  height: 215px;
+}
+
+.book-spine-item:hover {
+  z-index: 10;
+  box-shadow: 8px 16px 20px rgba(0, 0, 0, .15), -1px 0 2px rgba(255, 255, 255, .3) inset;
+  transform: translateY(-16px) rotateZ(-1.5deg);
+}
+
+.book-spine-item:focus-visible {
+  outline: 1px solid var(--seal);
+  outline-offset: 6px;
+}
+
+.spine-title {
+  color: var(--ink);
+  font-family: var(--kai);
+  font-size: 15px;
+  letter-spacing: 4px;
+  opacity: .85;
+  writing-mode: vertical-rl;
+}
+
+.spine-status-dot {
+  width: 6px;
+  height: 6px;
+  margin-bottom: 12px;
+  border-radius: 50%;
+}
+
+.spine-status-dot.ongoing {
+  background-color: var(--seal);
+}
+
+.spine-status-dot.finished {
+  background-color: var(--gold);
+}
+
+/* =========================================
+   拿起书本：详阅面板 (The Inspection Modal)
+   ========================================= */
+.inspect-modal {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
-  padding: 28px 20px;
-  border: 1px solid rgba(52, 39, 19, .22) !important;
-  border-left: 3px solid rgba(52, 39, 19, .24) !important;
-  border-radius: 1px 5px 5px 1px !important;
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, .075) 0 10px, transparent 11px 100%),
-    linear-gradient(180deg, var(--paper3), var(--paper) 62%, var(--paper2)) !important;
-  box-shadow: inset 8px 0 12px rgba(18, 11, 8, .05), inset -3px 0 7px rgba(255, 255, 255, .24) !important;
+  background: rgba(18, 11, 8, .85) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.inspect-stage {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 60px;
+  max-width: 800px;
+  animation: inspectPop .6s cubic-bezier(.16, 1, .3, 1) forwards;
+}
+
+@keyframes inspectPop {
+  0% {
+    opacity: 0;
+    filter: blur(4px);
+    transform: scale(.9) translateY(20px);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1) translateY(0);
+  }
+}
+
+.inspect-book-cover {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 240px;
+  height: 360px;
+  padding-top: 40px;
+  border-radius: 2px 6px 6px 2px;
+  background: var(--paper);
+  box-shadow: 20px 20px 40px rgba(0, 0, 0, .4), inset -2px 0 10px rgba(0, 0, 0, .05);
+}
+
+.cover-binding {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 24px;
+  border-right: 1px dashed rgba(52, 39, 19, .3);
+  background: linear-gradient(to right, rgba(0, 0, 0, .1), rgba(0, 0, 0, 0));
+}
+
+.cover-label {
+  z-index: 2;
+  padding: 24px 12px;
+  border: 1px solid var(--line2);
+  background: var(--paper3);
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, .1);
+}
+
+.cover-title {
+  margin: 0;
   color: var(--ink);
-  cursor: pointer;
-  font: inherit;
-  text-orientation: mixed;
-  writing-mode: horizontal-tb;
-}
-
-.book-spine:focus-visible {
-  outline: 1px solid var(--seal);
-  outline-offset: 4px;
-}
-
-.book-spine::before {
-  content: "";
-  position: absolute;
-  top: 28px;
-  bottom: 28px;
-  left: 18px;
-  border-left: 1px dashed rgba(52, 39, 19, .34);
-}
-
-.book-spine-mark {
-  position: absolute;
-  top: 18px;
-  left: 14px;
-  color: var(--muted);
   font-family: var(--kai);
-  font-size: 13px;
-  letter-spacing: 2px;
+  font-size: 24px;
+  letter-spacing: 8px;
   writing-mode: vertical-rl;
 }
 
-.book-spine-title {
-  writing-mode: vertical-rl;
-  font-family: var(--kai);
-  font-size: 20px;
-  color: var(--ink);
-  margin: auto;
-  text-align: center;
-  border-left: 2px solid var(--seal);
-  padding: 10px 4px;
-  letter-spacing: 4px;
-  line-height: 1.5;
-}
-
-.book-actions {
-  position: absolute;
-  top: 32px;
-  right: -48px;
+.inspect-info {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-left: 12px !important;
-  margin: 0 !important;
-  border: none !important;
-  border-left: 1px solid var(--line2) !important;
-  background: transparent !important;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-8px);
-  transition: opacity .4s ease, transform .4s ease;
+  max-width: 320px;
+  color: #eae3d1;
 }
 
-.book-card:hover .book-actions,
-.book-card:focus-within .book-actions {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(0);
+.info-meta {
+  margin-bottom: 12px;
+  color: #fff;
+  font-family: var(--kai);
+  font-size: 28px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, .5);
 }
 
-.book-actions button {
+.info-summary {
+  margin-bottom: 8px;
+  font-size: 15px;
+  line-height: 2;
+  opacity: .8;
+}
+
+.info-time {
+  margin-bottom: 40px;
+  font-family: var(--kai);
+  font-size: 12px;
+  opacity: .5;
+}
+
+.inspect-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.action-btn {
+  position: relative;
   padding: 0 !important;
   border: none !important;
-  border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  color: var(--ink2) !important;
+  color: #eae3d1 !important;
+  cursor: pointer;
   font-family: var(--kai);
-  font-size: 14px;
-  letter-spacing: 1px;
-  transition: color .3s ease, transform .3s ease;
+  font-size: 18px;
+  letter-spacing: 4px;
+  transition: all .3s ease;
 }
 
-.book-actions button:hover,
-.book-actions button:focus-visible {
-  color: var(--seal) !important;
-  transform: translateX(2px);
+.action-btn::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background-color: var(--paper);
+  transition: width .3s ease;
 }
 
-.book-actions .danger {
-  color: var(--seal) !important;
+.action-btn:hover {
+  color: #fff !important;
+  transform: translateX(8px);
+}
+
+.action-btn:hover::after {
+  width: 100%;
+}
+
+.action-btn.danger {
+  color: #d64a40 !important;
+}
+
+.action-btn.danger::after {
+  background-color: #d64a40;
+}
+
+.action-btn.danger:hover {
+  text-shadow: 0 0 8px rgba(214, 74, 64, .4);
+}
+
+@media (max-width: 768px) {
+  .inspect-stage {
+    flex-direction: column;
+    gap: 30px;
+  }
+
+  .inspect-info {
+    align-items: center;
+    text-align: center;
+  }
+
+  .inspect-actions {
+    align-items: center;
+  }
+
+  .action-btn:hover {
+    transform: translateX(0) scale(1.05);
+  }
 }
