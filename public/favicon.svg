@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect x="8" y="8" width="84" height="84" rx="6" fill="transparent" stroke="#96221b" stroke-width="6"/>
+  <text
+    x="50"
+    y="74"
+    font-family="'Kaiti SC', 'STKaiti', 'KaiTi', 'Noto Serif SC', 'Songti SC', serif"
+    font-size="62"
+    font-weight="bold"
+    fill="#96221b"
+    text-anchor="middle"
+  >卷</text>
+</svg>

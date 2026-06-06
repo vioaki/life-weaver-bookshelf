@@ -2,6 +2,10 @@
 
 一款可静态部署的纯文字人生沙盒。玩家从一卷空白书页开始，由 AI 扮演命运主持人，随机生成世界、身份、关系与变故；每一次抉择都会推进人生，并最终封存为书柜中的一册旧卷。
 
+## 在线体验
+
+[https://vioaki.github.io/life-weaver-bookshelf/](https://vioaki.github.io/life-weaver-bookshelf/)
+
 ## 展示
 
 | 书案入口 | 藏书阁 |
