@@ -216,9 +216,10 @@ function initTopTierInteractiveBook(): (() => void) | null {
   let currentY = -8;
   let targetX = 18;
   let targetY = -8;
+  let isGyroActive = false;
 
   const onPointerMove = (event: PointerEvent): void => {
-    if (reducedMotion) return;
+    if (reducedMotion || isGyroActive) return;
     const rect = zone.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
@@ -227,8 +228,20 @@ function initTopTierInteractiveBook(): (() => void) | null {
   };
 
   const onPointerLeave = (): void => {
+    if (isGyroActive) return;
     targetX = 18;
     targetY = -8;
+  };
+
+  const onDeviceOrientation = (event: DeviceOrientationEvent): void => {
+    if (reducedMotion || event.gamma === null || event.beta === null) return;
+
+    isGyroActive = true;
+    const gamma = Math.max(-35, Math.min(35, event.gamma));
+    const beta = Math.max(10, Math.min(80, event.beta));
+
+    targetY = -8 + (gamma / 35) * 14;
+    targetX = 18 + ((45 - beta) / 35) * 10;
   };
 
   const loopMatrix = (): void => {
@@ -241,12 +254,14 @@ function initTopTierInteractiveBook(): (() => void) | null {
 
   zone.addEventListener("pointermove", onPointerMove);
   zone.addEventListener("pointerleave", onPointerLeave);
+  window.addEventListener("deviceorientation", onDeviceOrientation);
   loopMatrix();
 
   return () => {
     destroyed = true;
     zone.removeEventListener("pointermove", onPointerMove);
     zone.removeEventListener("pointerleave", onPointerLeave);
+    window.removeEventListener("deviceorientation", onDeviceOrientation);
     cancelAnimationFrame(matrixFrame);
   };
 }
@@ -356,6 +371,13 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
     }
   };
 
+  const onPointerDown = (event: PointerEvent): void => {
+    if ("isPrimary" in event && !event.isPrimary) return;
+    resetPointer();
+    lastPointerMoveAt = performance.now();
+    appendMove(event.clientX, event.clientY);
+  };
+
   const onPointerMove = (event: PointerEvent): void => {
     if ("isPrimary" in event && !event.isPrimary) return;
     lastPointerMoveAt = performance.now();
@@ -448,7 +470,10 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
 
   resize();
   window.addEventListener("resize", resize);
+  window.addEventListener("pointerdown", onPointerDown);
   window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", resetPointer);
+  window.addEventListener("pointercancel", resetPointer);
   window.addEventListener("mousemove", onMouseMove);
   window.addEventListener("pointerleave", resetPointer);
   window.addEventListener("blur", resetPointer);
@@ -458,7 +483,10 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
   return () => {
     destroyed = true;
     window.removeEventListener("resize", resize);
+    window.removeEventListener("pointerdown", onPointerDown);
     window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", resetPointer);
+    window.removeEventListener("pointercancel", resetPointer);
     window.removeEventListener("mousemove", onMouseMove);
     window.removeEventListener("pointerleave", resetPointer);
     window.removeEventListener("blur", resetPointer);
@@ -510,14 +538,18 @@ function renderReader(): string {
   const hasPages = pages.length > 0;
   const atStart = currentPageIndex <= 0;
   const atEnd = !hasPages || currentPageIndex >= pages.length - 1;
-  const ageStr = state.age != null ? `${state.age}春秋` : "";
-  const infoLine = [state.world, ageStr, state.oneline].filter(Boolean).join(" · ");
+  const currentAge = state.age != null ? state.age : "?";
+  const infoLine = [state.world, state.oneline].filter(Boolean).join(" · ");
   return `
     <main class="reader">
       <header id="topbar">
         <div id="whoami">
           <h1 id="name">${esc(book.title || "未名之卷")}</h1>
           <div id="sub">${esc(infoLine || "命运尚未启封")}</div>
+        </div>
+        <div class="reader-age-seal" title="当前岁数">
+          <span class="age-num">${esc(currentAge)}</span>
+          <span class="age-unit">岁</span>
         </div>
         <nav class="reader-nav">
           <button class="nav-text-link" data-action="back-home">归案</button>
