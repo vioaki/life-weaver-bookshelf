@@ -4818,3 +4818,76 @@ body {
     transform: translateX(0) scale(1.05);
   }
 }
+
+/* =========================================
+   藏经阁 2.0：无限延伸的层板 & 状态闲章
+   ========================================= */
+.bookcase-rack {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, 46px) !important;
+  grid-auto-rows: 260px !important;
+  gap: 0 4px !important;
+  justify-content: center !important;
+  align-items: end !important;
+  padding: 20px 40px !important;
+  background-image:
+    linear-gradient(to bottom,
+      transparent 242px,
+      #635245 242px,
+      #4a3c31 244px,
+      #221811 258px,
+      transparent 258px) !important;
+  background-size: 100% 260px !important;
+  background-attachment: local !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+}
+
+.bookcase-rack::after {
+  display: none !important;
+}
+
+.book-spine-item {
+  align-self: end !important;
+  margin-bottom: 18px !important;
+  transform-origin: bottom center !important;
+}
+
+.book-spine-item:hover {
+  transform: translateY(-20px) rotateZ(-1.5deg) !important;
+}
+
+.spine-status-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px !important;
+  height: 16px !important;
+  margin-bottom: 12px !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.spine-status-dot.ongoing::after {
+  content: "续";
+  padding: 2px;
+  border: 1px solid rgba(150, 34, 27, .4);
+  border-radius: 50%;
+  color: var(--seal);
+  font-family: var(--kai);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.spine-status-dot.finished::after {
+  content: "终";
+  padding: 2px;
+  border: 1px solid rgba(43, 33, 17, .3);
+  border-radius: 2px;
+  color: var(--ink);
+  font-family: var(--kai);
+  font-size: 11px;
+  line-height: 1;
+  opacity: .8;
+}
