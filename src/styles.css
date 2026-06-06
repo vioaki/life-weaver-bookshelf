@@ -4891,3 +4891,42 @@ body {
   line-height: 1;
   opacity: .8;
 }
+
+/* =========================================
+   藏经阁 3.0：绝对重力踩实 & 长书名自适应
+   ========================================= */
+.bookcase-rack {
+  grid-auto-rows: 260px !important;
+  background-image: linear-gradient(
+    to bottom,
+    transparent 246px,
+    #5c4a3d 246px,
+    #382a20 248px,
+    #140d08 256px,
+    transparent 260px
+  ) !important;
+}
+
+.book-spine-item {
+  justify-content: flex-start !important;
+  margin-bottom: 14px !important;
+  padding: 16px 0 !important;
+}
+
+.book-spine-item:hover {
+  transform: translateY(-16px) rotateZ(-1deg) !important;
+}
+
+.spine-title {
+  max-height: calc(100% - 36px) !important;
+  margin-top: 4px !important;
+  overflow: hidden !important;
+  font-size: 14px !important;
+  letter-spacing: 2px !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.spine-status-dot {
+  flex-shrink: 0 !important;
+}
