@@ -32,7 +32,9 @@ let dockExpanded = false;
 let inspectingBookId: string | null = null;
 let homeBookEngineCleanup: (() => void) | null = null;
 let globalInkEngineCleanup: (() => void) | null = null;
+let backdropPointerStarted = false;
 
+app.addEventListener("pointerdown", handlePointerDown);
 app.addEventListener("click", (event) => void handleClick(event));
 app.addEventListener("submit", (event) => void handleSubmit(event));
 app.addEventListener("keydown", (event) => void handleKeyDown(event));
@@ -824,30 +826,41 @@ function renderFinaleModal(): string {
   `;
 }
 
+function handlePointerDown(event: PointerEvent): void {
+  const target = event.target as HTMLElement;
+  const actionEl = target.closest<HTMLElement>("[data-action]");
+  backdropPointerStarted = !!actionEl?.classList.contains("modal") && target === actionEl;
+}
+
 async function handleClick(event: MouseEvent): Promise<void> {
   const target = event.target as HTMLElement;
   const actionEl = target.closest<HTMLElement>("[data-action]");
-  if (!actionEl) return;
+  if (!actionEl) {
+    backdropPointerStarted = false;
+    return;
+  }
   if (actionEl.classList.contains("modal") && target !== actionEl) return;
   const action = actionEl.dataset.action || "";
   if (action === "close-modal") {
     event.preventDefault();
-    const clickedBackdrop = actionEl.classList.contains("modal") && target === actionEl;
+    const clickedBackdrop = backdropPointerStarted && actionEl.classList.contains("modal") && target === actionEl;
     const clickedCloseButton = actionEl.tagName === "BUTTON";
     if (clickedBackdrop || clickedCloseButton) {
       modal = null;
       inspectingBookId = null;
       renderApp();
     }
+    backdropPointerStarted = false;
     return;
   }
   if (action === "close-inspect") {
     event.preventDefault();
-    if (target.classList.contains("inspect-modal")) {
+    if (backdropPointerStarted && target.classList.contains("inspect-modal")) {
       modal = null;
       inspectingBookId = null;
       renderApp();
     }
+    backdropPointerStarted = false;
     return;
   }
   event.preventDefault();
