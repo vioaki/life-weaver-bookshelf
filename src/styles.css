@@ -5180,3 +5180,678 @@ body {
   left: calc(var(--timeline-line-x) - 22px) !important;
   transform: translateX(-50%);
 }
+
+/* =====================================================================
+   终笔 · MASTER POLISH LAYER (authoritative, last-wins)
+   氛围沉浸 · 适度丰盈 / 灵动有度 — appended 2026-06-09
+   Adds atmosphere & depth without rewriting the stack below.
+   ===================================================================== */
+:root {
+  --ease-silk: cubic-bezier(.16, 1, .3, 1);
+  --ease-gate: cubic-bezier(.22, 1, .36, 1);
+  --ease-breath: cubic-bezier(.45, 0, .55, 1);
+  --amber-glow: rgba(255, 224, 168, .55);
+  --amber-deep: rgba(150, 98, 27, .14);
+  --vignette-edge: rgba(26, 16, 8, .22);
+}
+
+/* Single shared stacking context so backdrop / ink / views / overlays
+   interleave predictably with the atmosphere pseudo-elements. */
+#app {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
+/* Warm ambient light pool — sits above backdrop, below ink + content.
+   Gives the parchment depth and a luminous heart near the brand. */
+#app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 50% at 50% 16%, var(--amber-glow) 0%, rgba(255, 224, 168, 0) 62%),
+    radial-gradient(120% 90% at 50% 120%, var(--amber-deep) 0%, rgba(150, 98, 27, 0) 60%);
+  mix-blend-mode: soft-light;
+  opacity: .9;
+}
+
+/* Soft vignette frame — drawn on top of everything, faint, to seat the
+   composition like a page under gallery light. Never blocks input. */
+#app::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background:
+    radial-gradient(130% 115% at 50% 42%, transparent 56%, var(--vignette-edge) 100%);
+  mix-blend-mode: multiply;
+}
+
+/* Crafted view entrance — refine the existing sandbox transition into a
+   slower, settled rise with a gentle blur-off. (No !important: the reader
+   sandbox intentionally keeps transition:none at higher specificity.) */
+.view-sandbox {
+  transition:
+    transform 1.05s var(--ease-gate),
+    filter 1.05s var(--ease-gate),
+    opacity .8s var(--ease-gate);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-sandbox {
+    transition: opacity .25s ease;
+  }
+  #app::before { opacity: .7; }
+}
+
+/* ---------------------------------------------------------------------
+   书案 · HOME composition — fill the right canvas, seat the book in light
+   --------------------------------------------------------------------- */
+.brand-section .brand-seal {
+  box-shadow:
+    0 0 0 4px rgba(150, 36, 27, .05),
+    0 2px 10px rgba(150, 36, 27, .12) !important;
+  transition: box-shadow .6s var(--ease-silk), transform .6s var(--ease-silk);
+}
+
+.brand-section .brand-title {
+  text-shadow: 0 1px 0 rgba(255, 250, 238, .6), 0 8px 24px rgba(26, 16, 8, .08);
+}
+
+.home-right-panel {
+  position: relative;
+}
+
+/* Ambient light pool behind the interactive book — fills dead right-space. */
+.home-right-panel::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 47%;
+  left: 50%;
+  width: min(580px, 94%);
+  height: min(580px, 94%);
+  pointer-events: none;
+  background: radial-gradient(50% 50% at 50% 50%, var(--amber-glow) 0%, rgba(255, 224, 168, .12) 44%, transparent 72%);
+  opacity: .78;
+  transform: translate(-50%, -50%);
+  animation: mp-aura-breathe 9s var(--ease-breath) infinite;
+}
+
+.home-right-panel .stage-3d {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes mp-aura-breathe {
+  0%, 100% { opacity: .6; transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: .9; transform: translate(-50%, -50%) scale(1.05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-right-panel::before { animation: none; opacity: .7; }
+}
+
+/* Book cover — warmer parchment with a soft directional sheen. */
+.mesh-face.cover-front {
+  background:
+    linear-gradient(118deg, rgba(255, 252, 242, .5) 0%, rgba(255, 252, 242, 0) 34%),
+    linear-gradient(135deg, #ece3cd 0%, var(--paper-base) 52%, #ddd0b4 100%) !important;
+  box-shadow:
+    inset 0 0 30px rgba(120, 90, 40, .06),
+    inset 0 1px 0 rgba(255, 255, 255, .35) !important;
+}
+
+/* Deeper, softer grounding shadow + a gentle breathing of its weight. */
+.mesh-shadow-floor {
+  background: radial-gradient(50% 50% at 50% 50%, rgba(18, 11, 8, .32) 0%, rgba(18, 11, 8, .08) 58%, transparent 100%) !important;
+  filter: blur(18px) !important;
+  animation: mp-floor-breathe 9s var(--ease-breath) infinite;
+}
+
+@keyframes mp-floor-breathe {
+  0%, 100% { opacity: .9;  transform: translateZ(-20px) scaleY(.9)  scaleX(1); }
+  50%      { opacity: .72; transform: translateZ(-20px) scaleY(.86) scaleX(1.04); }
+}
+
+/* Inscription strip — soft gold double-rule and a warmer plate. */
+.book-inscription-strip {
+  background: linear-gradient(160deg, var(--paper-bright) 0%, #f0e7d2 100%) !important;
+  box-shadow:
+    inset 0 0 0 2px var(--paper-bright),
+    inset 0 0 0 2.5px rgba(143, 98, 27, .28),
+    1px 3px 8px rgba(26, 16, 8, .1) !important;
+}
+
+.book-inscription-strip .book-title-mesh {
+  background: linear-gradient(180deg, #3a2d1a 0%, #6e5026 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  opacity: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mesh-shadow-floor { animation: none !important; }
+}
+/* ---------------------------------------------------------------------
+   藏书阁 · SHELF — frame the rack into a wooden cabinet with a lit niche
+   The per-row wood boards already exist; we add the cabinet body around
+   them: wood frame, recessed dark niche (via background-color showing
+   through the transparent board gradient), and ambient occlusion.
+   --------------------------------------------------------------------- */
+.bookcase-rack {
+  max-width: 880px !important;
+  min-height: 360px !important;
+  margin: 28px auto 56px !important;
+  padding: 14px 44px 22px !important;
+  background-color: #281b11 !important;
+  border: 13px solid #3c2a1b;
+  border-top-width: 16px;
+  border-bottom-width: 22px;
+  border-radius: 7px;
+  box-shadow:
+    0 32px 64px -22px rgba(26, 16, 8, .55),
+    0 10px 24px rgba(26, 16, 8, .28),
+    inset 0 2px 0 rgba(255, 226, 172, .12),
+    inset 0 0 0 1px rgba(0, 0, 0, .45),
+    inset 0 34px 54px -22px rgba(0, 0, 0, .72),
+    inset 38px 0 50px -34px rgba(0, 0, 0, .6),
+    inset -38px 0 50px -34px rgba(0, 0, 0, .6),
+    inset 0 -14px 34px -12px rgba(0, 0, 0, .45) !important;
+}
+
+/* Wood-grain frame via border-image — warm striations + directional sheen. */
+.bookcase-rack {
+  border-image: linear-gradient(
+    100deg,
+    #2b1d12 0%, #4a341f 14%, #3a281a 30%, #543a25 52%, #38271a 74%, #4a341f 88%, #2b1d12 100%
+  ) 1 stretch;
+}
+
+/* Warm niche light washing down from the top inner edge. */
+.bookcase-rack {
+  position: relative;
+}
+
+.bookcase-rack::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 6px;
+  left: 6px;
+  height: 46%;
+  pointer-events: none;
+  background: radial-gradient(120% 100% at 50% 0%, rgba(255, 214, 150, .22) 0%, rgba(255, 214, 150, .06) 38%, transparent 70%);
+  mix-blend-mode: screen;
+}
+
+/* Spines glow a touch warmer where the niche light hits them. */
+.book-spine-item .spine-title {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .35), 0 0 14px rgba(255, 220, 160, .12) !important;
+}
+
+/* Empty cabinet — a quiet lit niche rather than a dashed box. */
+.bookcase-rack.empty-case {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background-image: none !important;
+}
+
+.bookcase-rack .empty-bookcase {
+  align-self: center;
+  width: auto !important;
+  margin: auto;
+  padding: 54px 40px !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: rgba(232, 214, 180, .58) !important;
+  font-family: var(--kai);
+  font-size: 16px;
+  letter-spacing: 6px;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, .5);
+}
+
+.bookcase-rack .empty-bookcase::after {
+  content: "起新卷，落第一笔";
+  display: block;
+  margin-top: 14px;
+  color: rgba(232, 214, 180, .32) !important;
+  font-size: 12px;
+  letter-spacing: 4px;
+}
+
+/* ---------------------------------------------------------------------
+   长卷 · READER — light-touch refinement (already the strongest screen)
+   --------------------------------------------------------------------- */
+
+/* Drop cap: classical cinnabar initial — enlarged, red, no frame (previous design). */
+#app[data-view="reader"] .dropcap {
+  float: left !important;
+  margin: 4px 8px 0 0 !important;
+  padding: 0 !important;
+  font-family: var(--kai) !important;
+  font-size: 44px !important;
+  font-weight: 500 !important;
+  line-height: 1.05 !important;
+  color: var(--seal) !important;
+  background: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  text-shadow: 0 1px 0 rgba(158, 43, 37, .12) !important;
+}
+
+/* Era heading: a hairline gold rule under the chapter title for rhythm. */
+#app[data-view="reader"] .era .ttl {
+  position: relative;
+}
+
+/* Choice rows: a quiet cinnabar tick that grows on hover — clearer afford. */
+#app[data-view="reader"] .choice {
+  position: relative;
+  padding-left: 14px !important;
+  transition: color .35s var(--ease-silk), transform .35s var(--ease-silk) !important;
+}
+
+#app[data-view="reader"] .choice::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 2px;
+  height: 0;
+  background: var(--seal);
+  transform: translateY(-50%);
+  transition: height .35s var(--ease-silk);
+}
+
+#app[data-view="reader"] .choice:hover::before,
+#app[data-view="reader"] .choice:focus-visible::before {
+  height: 58%;
+}
+
+/* Delta chips: subtle lift and a hairline accent edge by sign. */
+#app[data-view="reader"] .delta.up {
+  border-color: rgba(63, 107, 74, .4) !important;
+}
+
+#app[data-view="reader"] .delta.down {
+  border-color: rgba(158, 43, 37, .35) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app[data-view="reader"] .choice,
+  #app[data-view="reader"] .choice::before {
+    transition: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   弹窗 · MODALS / INSPECT / FINALE — crafted entrances, warmer seating
+   --------------------------------------------------------------------- */
+
+/* Modal wash: a touch warmer + soft scrim so sheets feel lit from within.
+   Scoped OFF the inspect modal — that one needs a DARK scrim so its
+   light-on-dark text stays legible (a warm wash washed it out). */
+.modal:not(.inspect-modal) {
+  background:
+    radial-gradient(120% 100% at 50% 30%, rgba(244, 234, 208, .82), rgba(214, 200, 168, .8) 100%) !important;
+}
+
+/* Book-inspect modal: deep lacquer scrim + spotlight, so the cover reads as
+   lit on a dark stage and the right-hand text is crisp. */
+.modal.inspect-modal {
+  background:
+    radial-gradient(90% 80% at 32% 42%, rgba(40, 26, 14, .62) 0%, rgba(20, 12, 7, .9) 62%, rgba(14, 8, 5, .95) 100%) !important;
+  backdrop-filter: blur(9px) saturate(108%) !important;
+  -webkit-backdrop-filter: blur(9px) saturate(108%) !important;
+}
+
+/* Right-hand info column: firmer, warmer ink so it never fades into the cover. */
+.inspect-modal .info-meta {
+  color: #fff7e9 !important;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, .65) !important;
+}
+.inspect-modal .info-summary {
+  color: #ece3d0 !important;
+  opacity: .92 !important;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .5) !important;
+}
+.inspect-modal .info-time {
+  color: #d9cdb4 !important;
+  opacity: .66 !important;
+}
+.inspect-modal .action-btn {
+  color: #f1e8d4 !important;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .55) !important;
+}
+
+/* Sheet: a settled rise-in instead of an instant pop. */
+.sheet {
+  animation: mp-sheet-rise .6s var(--ease-gate) both;
+  box-shadow:
+    0 30px 60px -28px rgba(26, 16, 8, .5),
+    0 8px 20px rgba(26, 16, 8, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .5) !important;
+}
+
+@keyframes mp-sheet-rise {
+  0%   { opacity: 0; transform: translateY(16px) scale(.985); filter: blur(3px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+.sheet h2 {
+  letter-spacing: 3px;
+}
+
+/* Finale zen circle — a slow, meditative breath (motion-safe). */
+.death-zen-circle {
+  box-shadow: 0 0 0 6px rgba(158, 43, 37, .05), 0 0 24px rgba(158, 43, 37, .12);
+  animation: mp-zen-breathe 6s var(--ease-breath) infinite;
+}
+
+@keyframes mp-zen-breathe {
+  0%, 100% { transform: scale(1);    opacity: .85; }
+  50%      { transform: scale(1.06); opacity: 1; }
+}
+
+/* Death scroll seating — a faint paper edge glow under gallery light. */
+.death-title {
+  text-shadow: 0 1px 0 rgba(255, 250, 238, .5), 0 8px 28px rgba(26, 16, 8, .12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet { animation: none; }
+  .death-zen-circle { animation: none; }
+}
+
+/* ---------------------------------------------------------------------
+   氛围 · AMBIENT MOTION — drifting dust/ink motes over the home book.
+   Restrained: a sparse field of slow warm specks lit by the aura.
+   --------------------------------------------------------------------- */
+.home-dust {
+  position: absolute;
+  z-index: 0;
+  inset: 6% 8%;
+  pointer-events: none;
+  opacity: .9;
+  /* Each radial-gradient is one mote; positions animate via background-position. */
+  background-image:
+    radial-gradient(1.5px 1.5px at 20% 30%, rgba(255, 238, 200, .9), transparent 60%),
+    radial-gradient(1px 1px at 70% 22%, rgba(255, 244, 214, .7), transparent 60%),
+    radial-gradient(2px 2px at 42% 68%, rgba(255, 232, 188, .8), transparent 60%),
+    radial-gradient(1px 1px at 82% 60%, rgba(255, 244, 214, .65), transparent 60%),
+    radial-gradient(1.5px 1.5px at 30% 80%, rgba(255, 238, 200, .7), transparent 60%),
+    radial-gradient(1px 1px at 60% 45%, rgba(255, 248, 222, .6), transparent 60%),
+    radial-gradient(1.5px 1.5px at 12% 55%, rgba(255, 236, 196, .7), transparent 60%),
+    radial-gradient(1px 1px at 90% 38%, rgba(255, 244, 214, .55), transparent 60%);
+  background-repeat: no-repeat;
+  mix-blend-mode: screen;
+  animation: mp-dust-drift 26s linear infinite;
+}
+
+@keyframes mp-dust-drift {
+  0%   { transform: translate3d(0, 0, 0); opacity: .7; }
+  50%  { transform: translate3d(-10px, -16px, 0); opacity: .95; }
+  100% { transform: translate3d(0, 0, 0); opacity: .7; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-dust { animation: none; opacity: .5; }
+}
+
+/* ---------------------------------------------------------------------
+   藏书阁 · 终笔修正 — 书脊踏实落板 + 木纹层板可见 + 海量藏书的优雅
+   FIX: my earlier cabinet override re-introduced padding-top:14px, which
+   desynced every spine from its painted plank by exactly 14px (the plank
+   gradient tiles from the padding-box top, the grid rows start below it).
+   Reset padding-top to 0 to put them back in phase, then paint a richer,
+   clearly-lit wooden plank so books visibly REST on each shelf.
+   --------------------------------------------------------------------- */
+.bookcase-rack:not(.empty-case) {
+  padding: 0 44px 26px !important;
+  /* A substantial plank per 260px row: a bright lit front lip exactly at the
+     spine baseline (246px), a warm wood body, then a dark recess gap. */
+  background-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 243px,
+    rgba(255, 226, 170, .45) 244px,   /* lit front edge */
+    #7a5f44 246px,                     /* plank top face */
+    #5a4430 251px,
+    #3c2c1d 257px,                     /* plank underside */
+    rgba(0, 0, 0, .55) 259px,          /* shadow gap below board */
+    transparent 260px
+  ) !important;
+  background-size: 100% 260px !important;
+  background-position: 0 0 !important;
+  background-attachment: local !important;
+  background-repeat: repeat-y !important;
+}
+
+/* Seat the spine baseline precisely on the lit lip (260 row − 14 = 246). */
+.bookcase-rack:not(.empty-case) .book-spine-item {
+  position: relative;
+  align-self: end !important;
+  margin-bottom: 14px !important;
+}
+
+/* A faint contact shadow under each spine so it reads as resting on wood. */
+.bookcase-rack:not(.empty-case) .book-spine-item::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  bottom: -3px;
+  left: 50%;
+  width: 42px;
+  height: 9px;
+  transform: translateX(-50%);
+  background: radial-gradient(50% 100% at 50% 0%, rgba(0, 0, 0, .45), transparent 74%);
+  pointer-events: none;
+}
+
+/* ---- 海量藏书 (scalability) -------------------------------------------
+   Grid auto-fills 46px columns and adds 260px rows as needed, so any number
+   of books wraps into more lit planks automatically. Keep the cabinet from
+   growing unbounded: cap its height and let the niche scroll INSIDE the
+   wooden frame, so even a hundred volumes stay framed and elegant. */
+.bookcase-rack:not(.empty-case) {
+  max-height: min(72vh, 1040px) !important;   /* 4 planks visible, then scroll */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(122, 95, 68, .7) transparent;
+}
+.bookcase-rack:not(.empty-case)::-webkit-scrollbar { width: 9px; }
+.bookcase-rack:not(.empty-case)::-webkit-scrollbar-track { background: transparent; }
+.bookcase-rack:not(.empty-case)::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9px;
+  background: rgba(122, 95, 68, .6);
+  background-clip: padding-box;
+}
+.bookcase-rack:not(.empty-case)::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 118, 84, .8);
+  background-clip: padding-box;
+}
+
+/* ---------------------------------------------------------------------
+   弹窗退场动画 · MODAL EXIT — mirror each entrance so closing feels
+   intentional, not abrupt. JS adds `.is-leaving` to the modal layer, we
+   play a reverse animation, then JS removes the node on animationend.
+   --------------------------------------------------------------------- */
+.modal-layer-global.is-leaving { pointer-events: none; }
+
+/* Backdrop scrims fade out as the layer leaves. */
+.modal-layer-global.is-leaving .modal,
+.modal-layer-global.is-leaving #death {
+  animation: mp-scrim-out .42s var(--ease-gate) both;
+}
+
+/* Sheet modals (设置/属性/关系): settle back down. */
+.modal-layer-global.is-leaving .sheet {
+  animation: mp-sheet-sink .4s var(--ease-gate) both !important;
+}
+
+/* Inspect modal: the book stage recedes. */
+.modal-layer-global.is-leaving .inspect-stage {
+  animation: mp-inspect-out .4s var(--ease-gate) both !important;
+}
+
+/* Finale (终章): the eulogy dissolves with a soft blur. */
+.modal-layer-global.is-leaving .death-scroll {
+  animation: mp-eulogy-out .44s var(--ease-gate) both !important;
+}
+
+@keyframes mp-scrim-out {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes mp-sheet-sink {
+  0%   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: translateY(18px) scale(.985); filter: blur(3px); }
+}
+@keyframes mp-inspect-out {
+  0%   { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+  100% { opacity: 0; transform: scale(.92) translateY(16px); filter: blur(4px); }
+}
+@keyframes mp-eulogy-out {
+  0%   { opacity: 1; transform: translateY(0); filter: blur(0); }
+  100% { opacity: 0; transform: translateY(-14px); filter: blur(8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-layer-global.is-leaving .modal,
+  .modal-layer-global.is-leaving #death,
+  .modal-layer-global.is-leaving .sheet,
+  .modal-layer-global.is-leaving .inspect-stage,
+  .modal-layer-global.is-leaving .death-scroll {
+    animation: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   重入轮回 · REINCARNATE FX — a graceful scatter from screen center as the
+   eulogy gives way to the home 书案. Three variants cycle per click:
+   花瓣随风 (petal) · 魂归星火 (ember) · 墨花绽放 (inkbloom).
+   JS builds particles with random --tx/--ty/--rot/--delay/--dur/--scale.
+   --------------------------------------------------------------------- */
+.reincarnate-fx {
+  position: fixed;
+  inset: 0;
+  z-index: 120;                 /* above #death (100) */
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  overflow: hidden;
+  animation: fx-veil 4.6s linear both;
+}
+
+@keyframes fx-veil {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  74%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.reincarnate-fx-label {
+  font-family: var(--kai);
+  font-size: clamp(20px, 3.6vw, 34px);
+  letter-spacing: .46em;
+  text-indent: .46em;            /* balance the trailing letter-spacing */
+  color: var(--seal);
+  text-shadow: 0 2px 20px rgba(255, 240, 214, .55), 0 0 34px rgba(158, 43, 37, .22);
+  animation: fx-label 4.6s cubic-bezier(.4, 0, .2, 1) both;
+}
+
+@keyframes fx-label {
+  0%   { opacity: 0; transform: translateY(10px) scale(.92); filter: blur(7px); letter-spacing: .2em; }
+  16%  { opacity: 1; transform: translateY(0) scale(1);      filter: blur(0);   letter-spacing: .46em; }
+  62%  { opacity: 1; transform: translateY(0) scale(1.01); }
+  100% { opacity: 0; transform: translateY(-8px) scale(1.06); filter: blur(6px); }
+}
+
+/* Petal carrier: handles the drift PATH (rise → wind → settle). A nested
+   ::before handles the petal's own flutter/spin, so the two motions compose
+   naturally instead of fighting in one transform. */
+.reincarnate-fx .fx-particle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 38px;
+  will-change: transform, opacity;
+  transform: translate(calc(-50% + var(--x0)), calc(-50% + var(--y0)));
+  animation: fx-drift var(--dur, 3.4s) cubic-bezier(.32, .05, .25, 1) var(--delay, 0s) both;
+}
+
+@keyframes fx-drift {
+  0% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--x0)), calc(-50% + var(--y0))) scale(.5);
+  }
+  12% { opacity: var(--peak, 1); }
+  40% {
+    transform: translate(calc(-50% + var(--mx)), calc(-50% + var(--my))) scale(var(--scale, 1));
+  }
+  82% { opacity: var(--peak, 1); }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(var(--scale, 1));
+  }
+}
+
+/* 花瓣随风 — the petal itself lives in ::before so it can flutter/spin
+   independently of the drift path on the carrier. A teardrop/petal silhouette
+   (rounded base, tapered tip) reads far more gracefully than a diamond. */
+.fx-petal .fx-particle::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(120% 130% at 50% 88%, #fff7f3 0%, #fbdfd6 34%, #efb0a1 68%, #db8a78 100%);
+  border-radius: 76% 76% 58% 58% / 96% 96% 42% 42%;
+  box-shadow: inset 0 -3px 6px rgba(255, 255, 255, .6), inset 0 4px 7px rgba(150, 70, 58, .14), 0 2px 7px rgba(120, 50, 40, .14);
+  filter: hue-rotate(var(--hue, 0deg));
+  transform-origin: 50% 78%;
+  animation: fx-flutter var(--dur, 3.4s) ease-in-out var(--delay, 0s) both;
+}
+
+/* A soft midrib crease for a more believable petal. */
+.fx-petal .fx-particle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 76% 76% 58% 58% / 96% 96% 42% 42%;
+  background: linear-gradient(180deg, transparent 6%, rgba(170, 78, 62, .2) 50%, transparent 94%);
+  pointer-events: none;
+  animation: fx-flutter var(--dur, 3.4s) ease-in-out var(--delay, 0s) both;
+}
+
+.fx-petal .fx-particle:nth-child(3n)::before {
+  background: radial-gradient(120% 130% at 50% 88%, #fffefb 0%, #f6ecdc 50%, #e6cfac 100%);
+}
+.fx-petal .fx-particle:nth-child(4n)::before {
+  background: radial-gradient(120% 130% at 50% 88%, #ffeae3 0%, #eda28f 56%, #bd5b48 100%);
+}
+.fx-petal .fx-particle:nth-child(5n)::before {
+  background: radial-gradient(120% 130% at 50% 88%, #fff4f6 0%, #f3c9d2 52%, #d98ca0 100%);
+}
+.fx-petal .fx-particle:nth-child(2n)::before { animation-direction: reverse; }
+
+@keyframes fx-flutter {
+  0%   { transform: rotate(var(--r0, 0deg)) rotateY(0deg); }
+  35%  { transform: rotate(calc((var(--r0) + var(--r1)) / 2)) rotateY(160deg); }
+  70%  { transform: rotate(var(--r1, 90deg)) rotateY(40deg); }
+  100% { transform: rotate(var(--rot, 180deg)) rotateY(200deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reincarnate-fx { display: none !important; }
+}

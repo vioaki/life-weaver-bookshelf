@@ -52,6 +52,7 @@ export async function callModel(
   cfg: AppConfig,
   messages: ChatMessage[],
   onDelta: (full: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   if (!cfg.key.trim()) {
     throw new Error("尚未配置 API Key。请在设置中填入自己的接口密钥。");
@@ -68,6 +69,7 @@ export async function callModel(
       stream: true,
       temperature: cfg.temperature,
     }),
+    signal,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -80,6 +82,10 @@ export async function callModel(
   let buf = "";
   let full = "";
   while (true) {
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => {});
+      throw new DOMException("Aborted", "AbortError");
+    }
     const { done, value } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });

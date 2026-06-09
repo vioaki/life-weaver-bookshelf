@@ -33,6 +33,13 @@ let inspectingBookId: string | null = null;
 let homeBookEngineCleanup: (() => void) | null = null;
 let globalInkEngineCleanup: (() => void) | null = null;
 let backdropPointerStarted = false;
+let activeController: AbortController | null = null;
+let homeEnginePending = false;
+let renderedHomeSig = "";
+let renderedShelfSig = "";
+let renderedReaderSig = "";
+let renderedModalKey = "";
+let lastFocusedBeforeModal: HTMLElement | null = null;
 
 app.addEventListener("pointerdown", handlePointerDown);
 app.addEventListener("click", (event) => void handleClick(event));
@@ -110,35 +117,85 @@ function renderApp(): void {
     homeSandbox = app.querySelector<HTMLElement>("#view-sandbox-home")!;
     shelfSandbox = app.querySelector<HTMLElement>("#view-sandbox-shelf")!;
     readerSandbox = app.querySelector<HTMLElement>("#view-sandbox-reader")!;
+    renderedHomeSig = "";
+    renderedShelfSig = "";
+    renderedReaderSig = "";
+    renderedModalKey = "";
     globalInkEngineCleanup?.();
     globalInkEngineCleanup = initGlobalEtherealSmokeSolver();
   }
 
   if (view === "home") {
-    stopHomeBookEngine();
-    homeSandbox.innerHTML = renderHome();
-    requestAnimationFrame(() => {
-      homeBookEngineCleanup = initTopTierInteractiveBook();
-    });
+    const homeSig = `${books.length}|${books.filter((b) => b.status === "ongoing").length}|${books.filter((b) => b.status === "finished").length}`;
+    if (homeSig !== renderedHomeSig) {
+      stopHomeBookEngine();
+      homeSandbox.innerHTML = renderHome();
+      renderedHomeSig = homeSig;
+    }
+    if (!homeBookEngineCleanup && !homeEnginePending) {
+      homeEnginePending = true;
+      requestAnimationFrame(() => {
+        homeEnginePending = false;
+        if (view === "home" && !homeBookEngineCleanup) homeBookEngineCleanup = initTopTierInteractiveBook();
+      });
+    }
   } else {
     stopHomeBookEngine();
   }
-  if (view === "shelf") shelfSandbox.innerHTML = renderShelf();
+
+  if (view === "shelf") {
+    const shelfSig = `n${books.length}|` + books.map((b) => `${b.id}:${b.status}:${b.title}`).join("|");
+    if (shelfSig !== renderedShelfSig) {
+      shelfSandbox.innerHTML = renderShelf();
+      renderedShelfSig = shelfSig;
+    }
+  }
+
   if (view === "reader") {
-    readerSandbox.innerHTML = renderReader();
+    const book = activeBook;
+    const sig = book
+      ? `${book.id}|${book.pages.length}|${busy}|${book.status}|${book.title}|${book.state.world ?? ""}|${book.state.oneline ?? ""}|${book.state.age ?? ""}`
+      : "none";
+    if (sig !== renderedReaderSig) {
+      readerSandbox.innerHTML = renderReader();
+      renderedReaderSig = sig;
+    }
+    syncReaderPage();
   }
 
   homeSandbox.classList.toggle("active-view", view === "home");
   shelfSandbox.classList.toggle("active-view", view === "shelf");
   readerSandbox.classList.toggle("active-view", view === "reader");
 
-  app.querySelector(".modal-layer-global")?.remove();
-  if (modal) {
-    const layer = document.createElement("div");
-    layer.className = "modal-layer-global";
-    layer.innerHTML = renderModal();
-    app.appendChild(layer);
+  const modalKey = modal ? `${modal}:${inspectingBookId ?? ""}` : "";
+  if (modalKey !== renderedModalKey) {
+    const current = app.querySelector<HTMLElement>(".modal-layer-global:not(.is-leaving)");
+    if (modal) {
+      app.querySelectorAll(".modal-layer-global.is-leaving").forEach((el) => el.remove());
+      current?.remove();
+      const layer = document.createElement("div");
+      layer.className = "modal-layer-global";
+      layer.innerHTML = renderModal();
+      app.appendChild(layer);
+      focusModal(layer);
+    } else {
+      if (current) dismissModalLayer(current);
+      restoreFocusAfterModal();
+    }
+    renderedModalKey = modalKey;
   }
+}
+
+function syncReaderPage(): void {
+  const slider = app.querySelector<HTMLElement>("#book-slider");
+  if (!slider) return;
+  slider.style.transform = `translateX(-${currentPageIndex * 100}%)`;
+  const pages = slider.querySelectorAll<HTMLElement>(".book-page");
+  pages.forEach((page, index) => page.classList.toggle("active", index === currentPageIndex));
+  const total = activeBook?.pages.length || 0;
+  const hasPages = total > 0;
+  app.querySelector(".nav-wing.left")?.classList.toggle("disabled", currentPageIndex <= 0);
+  app.querySelector(".nav-wing.right")?.classList.toggle("disabled", !hasPages || currentPageIndex >= total - 1);
 }
 
 function renderHome(): string {
@@ -169,6 +226,7 @@ function renderHome(): string {
       </section>
 
       <section class="home-right-panel" id="interactive-desk-zone" aria-hidden="true">
+        <div class="home-dust" aria-hidden="true"></div>
         <div class="stage-3d" id="mesh-stage">
           <div class="mesh-shadow-floor"></div>
           <div class="book-mesh-cube">
@@ -214,11 +272,20 @@ function initTopTierInteractiveBook(): (() => void) | null {
   const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let destroyed = false;
   let matrixFrame = 0;
+  let running = false;
   let currentX = 18;
   let currentY = -8;
   let targetX = 18;
   let targetY = -8;
   let isGyroActive = false;
+
+  stage.style.transform = `rotateX(${currentX}deg) rotateY(${currentY}deg)`;
+
+  const ensureRunning = (): void => {
+    if (reducedMotion || destroyed || running) return;
+    running = true;
+    matrixFrame = requestAnimationFrame(loopMatrix);
+  };
 
   const onPointerMove = (event: PointerEvent): void => {
     if (reducedMotion || isGyroActive) return;
@@ -227,12 +294,14 @@ function initTopTierInteractiveBook(): (() => void) | null {
     const y = event.clientY - rect.top;
     targetY = -8 + ((x / rect.width) - .5) * 16;
     targetX = 18 - (((y / rect.height) - .5) * 12);
+    ensureRunning();
   };
 
   const onPointerLeave = (): void => {
     if (isGyroActive) return;
     targetX = 18;
     targetY = -8;
+    ensureRunning();
   };
 
   const onDeviceOrientation = (event: DeviceOrientationEvent): void => {
@@ -244,6 +313,7 @@ function initTopTierInteractiveBook(): (() => void) | null {
 
     targetY = -8 + (gamma / 35) * 14;
     targetX = 18 + ((45 - beta) / 35) * 10;
+    ensureRunning();
   };
 
   const loopMatrix = (): void => {
@@ -251,16 +321,23 @@ function initTopTierInteractiveBook(): (() => void) | null {
     currentX += (targetX - currentX) * .05;
     currentY += (targetY - currentY) * .05;
     stage.style.transform = `rotateX(${currentX}deg) rotateY(${currentY}deg)`;
+    if (Math.abs(targetX - currentX) < .01 && Math.abs(targetY - currentY) < .01) {
+      currentX = targetX;
+      currentY = targetY;
+      stage.style.transform = `rotateX(${currentX}deg) rotateY(${currentY}deg)`;
+      running = false;
+      return;
+    }
     matrixFrame = requestAnimationFrame(loopMatrix);
   };
 
   zone.addEventListener("pointermove", onPointerMove);
   zone.addEventListener("pointerleave", onPointerLeave);
   window.addEventListener("deviceorientation", onDeviceOrientation);
-  loopMatrix();
 
   return () => {
     destroyed = true;
+    running = false;
     zone.removeEventListener("pointermove", onPointerMove);
     zone.removeEventListener("pointerleave", onPointerLeave);
     window.removeEventListener("deviceorientation", onDeviceOrientation);
@@ -276,6 +353,7 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
   const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let destroyed = false;
   let frame = 0;
+  let running = false;
   let lastPointerMoveAt = 0;
   let targetX = -1000;
   let targetY = -1000;
@@ -427,17 +505,20 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
     resetPointer();
     lastPointerMoveAt = performance.now();
     appendMove(event.clientX, event.clientY);
+    ensureRunning();
   };
 
   const onPointerMove = (event: PointerEvent): void => {
     if ("isPrimary" in event && !event.isPrimary) return;
     lastPointerMoveAt = performance.now();
     appendMove(event.clientX, event.clientY);
+    ensureRunning();
   };
 
   const onMouseMove = (event: MouseEvent): void => {
     if (performance.now() - lastPointerMoveAt < 80) return;
     appendMove(event.clientX, event.clientY);
+    ensureRunning();
   };
 
   const onVisibilityChange = (): void => {
@@ -450,6 +531,11 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
     ctx.fillStyle = "rgba(0, 0, 0, .002)";
     ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
     ctx.globalCompositeOperation = "source-over";
+
+    if (!hasMoved) {
+      running = false;
+      return;
+    }
 
     if (hasMoved) {
       lastBrushX = brushX;
@@ -514,8 +600,21 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
         ctx.fillStyle = gradient;
         ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
       }
+
+      const idle = performance.now() - lastPointerMoveAt > 600;
+      const settled = Math.hypot(targetX - brushX, targetY - brushY) < .5 && speed < .05;
+      if (idle && settled) {
+        running = false;
+        return;
+      }
     }
 
+    frame = requestAnimationFrame(loop);
+  };
+
+  const ensureRunning = (): void => {
+    if (reducedMotion || destroyed || running) return;
+    running = true;
     frame = requestAnimationFrame(loop);
   };
 
@@ -529,7 +628,7 @@ function initGlobalEtherealSmokeSolver(): (() => void) | null {
   window.addEventListener("pointerleave", resetPointer);
   window.addEventListener("blur", resetPointer);
   document.addEventListener("visibilitychange", onVisibilityChange);
-  loop();
+  if (!reducedMotion) ensureRunning();
 
   return () => {
     destroyed = true;
@@ -562,7 +661,7 @@ function renderShelf(): string {
         </div>
       </header>
       <section class="bookcase-rack ${books.length ? "" : "empty-case"}">
-        ${books.length ? books.map(renderBookSpine).join("") : `<div class="empty-bookcase">藏经阁尚空</div>`}
+        ${books.length ? books.map(renderBookSpine).join("") : `<div class="empty-bookcase">藏书阁尚空</div>`}
       </section>
     </main>
   `;
@@ -866,11 +965,13 @@ async function handleClick(event: MouseEvent): Promise<void> {
   event.preventDefault();
 
   if (action === "back-home") {
+    cancelActiveTurn();
     view = "home";
     modal = null;
     inspectingBookId = null;
     renderApp();
   } else if (action === "open-shelf") {
+    cancelActiveTurn();
     view = "shelf";
     modal = null;
     inspectingBookId = null;
@@ -893,14 +994,23 @@ async function handleClick(event: MouseEvent): Promise<void> {
     inspectingBookId = actionEl.dataset.id || null;
     modal = "inspect";
     renderApp();
-  } else if (action === "start-new" || action === "reincarnate") {
+  } else if (action === "reincarnate") {
+    playReincarnateEffect();
+    cancelActiveTurn();
+    view = "home";
+    modal = null;
+    inspectingBookId = null;
+    renderApp();
+  } else if (action === "start-new") {
     inspectingBookId = null;
     await startNewBook();
   } else if (action === "continue-latest") {
     const latest = books.find((book) => book.status === "ongoing") || books[0];
     if (latest) await openBook(latest.id);
-  } else if (action === "continue-book" || action === "read-book") {
+  } else if (action === "continue-book") {
     await openBook(actionEl.dataset.id || "");
+  } else if (action === "read-book") {
+    await openBook(actionEl.dataset.id || "", undefined, "first");
   } else if (action === "open-finale-book") {
     await openBook(actionEl.dataset.id || "", "finale");
   } else if (action === "delete-book") {
@@ -941,6 +1051,17 @@ async function handleSubmit(event: SubmitEvent): Promise<void> {
 
 async function handleKeyDown(event: KeyboardEvent): Promise<void> {
   const target = event.target as HTMLElement;
+  if (modal) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeModal();
+      return;
+    }
+    if (event.key === "Tab") {
+      trapModalTab(event);
+      return;
+    }
+  }
   if (event.key === "Enter" && target.id === "freein") {
     event.preventDefault();
     await sendFreeInput();
@@ -954,12 +1075,149 @@ async function handleKeyDown(event: KeyboardEvent): Promise<void> {
   }
 }
 
+function closeModal(): void {
+  modal = null;
+  inspectingBookId = null;
+  renderApp();
+}
+
+function modalFocusables(layer: HTMLElement): HTMLElement[] {
+  return Array.from(
+    layer.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+}
+
+function trapModalTab(event: KeyboardEvent): void {
+  const layer = app.querySelector<HTMLElement>(".modal-layer-global");
+  if (!layer) return;
+  const items = modalFocusables(layer);
+  if (items.length === 0) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+  if (event.shiftKey && (active === first || !layer.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function focusModal(layer: HTMLElement): void {
+  lastFocusedBeforeModal = (document.activeElement as HTMLElement) || null;
+  const items = modalFocusables(layer);
+  if (items[0]) {
+    items[0].focus({ preventScroll: true });
+  } else {
+    layer.tabIndex = -1;
+    layer.focus({ preventScroll: true });
+  }
+  layer.querySelectorAll<HTMLElement>("#death, .modal").forEach((el) => {
+    el.scrollTop = 0;
+  });
+}
+
+function restoreFocusAfterModal(): void {
+  const el = lastFocusedBeforeModal;
+  lastFocusedBeforeModal = null;
+  if (el && document.contains(el)) el.focus();
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function dismissModalLayer(layer: HTMLElement): void {
+  if (prefersReducedMotion()) {
+    layer.remove();
+    return;
+  }
+  layer.classList.add("is-leaving");
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    layer.remove();
+  };
+  layer.addEventListener("animationend", finish, { once: true });
+  window.setTimeout(finish, 460);
+}
+
+function playReincarnateEffect(): void {
+  if (prefersReducedMotion()) return;
+
+  const layer = document.createElement("div");
+  layer.className = "reincarnate-fx fx-petal";
+  layer.setAttribute("aria-hidden", "true");
+
+  const label = document.createElement("div");
+  label.className = "reincarnate-fx-label";
+  label.textContent = "花谢花开 · 又是一生";
+  layer.appendChild(label);
+
+  const rand = (min: number, max: number) => min + Math.random() * (max - min);
+
+  // Spread is driven by the real viewport: each petal flies toward the screen
+  // edge along its own angle, so larger screens disperse the bloom wider.
+  const hw = window.innerWidth / 2;
+  const hh = window.innerHeight / 2;
+  const diag = Math.hypot(hw, hh);
+  const count = Math.round(Math.min(66, Math.max(40, diag / 15)));
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement("span");
+    p.className = "fx-particle";
+
+    // Bloom outward from the center in every direction. Angles are spread
+    // evenly around the full circle with jitter so it reads as organic.
+    const baseAngle = (i / count) * Math.PI * 2;
+    const angle = baseAngle + rand(-0.3, 0.3);
+    const ax = Math.max(Math.abs(Math.cos(angle)), 1e-3);
+    const ay = Math.max(Math.abs(Math.sin(angle)), 1e-3);
+    // Distance to the viewport edge along this angle, then carry most petals
+    // out near (or just past) the rim for an airy, far-reaching scatter.
+    const edge = Math.min(hw / ax, hh / ay);
+    const dist = edge * rand(0.62, 1.04);
+    const startX = rand(-10, 10);
+    const startY = rand(-10, 10);
+    const tx = Math.cos(angle) * dist;
+    const ty = Math.sin(angle) * dist + rand(12, 46);   // gentle downward settle
+    // Curve the path: bow the midpoint perpendicular to travel.
+    const perp = angle + Math.PI / 2;
+    const curve = rand(-46, 46);
+    const midX = tx * 0.5 + Math.cos(perp) * curve;
+    const midY = ty * 0.45 + Math.sin(perp) * curve - rand(10, 34);
+
+    p.style.setProperty("--x0", `${startX}px`);
+    p.style.setProperty("--y0", `${startY}px`);
+    p.style.setProperty("--mx", `${midX}px`);
+    p.style.setProperty("--my", `${midY}px`);
+    p.style.setProperty("--tx", `${tx}px`);
+    p.style.setProperty("--ty", `${ty}px`);
+    p.style.setProperty("--r0", `${rand(-30, 30)}deg`);
+    p.style.setProperty("--r1", `${rand(-160, 160)}deg`);
+    p.style.setProperty("--rot", `${rand(-320, 320)}deg`);
+    p.style.setProperty("--scale", `${rand(0.7, 1.7)}`);
+    p.style.setProperty("--peak", `${rand(0.82, 1)}`);
+    p.style.setProperty("--delay", `${rand(0, 0.55)}s`);
+    p.style.setProperty("--dur", `${rand(3, 4.4)}s`);
+    p.style.setProperty("--hue", `${rand(-16, 16)}deg`);
+    layer.appendChild(p);
+  }
+
+  document.body.appendChild(layer);
+  window.setTimeout(() => layer.remove(), 5400);
+}
+
 async function startNewBook(): Promise<void> {
   if (!cfg.key.trim()) {
     modal = "settings";
     renderApp();
     return;
   }
+  cancelActiveTurn();
   const now = Date.now();
   const book: BookRecord = {
     id: crypto.randomUUID(),
@@ -989,9 +1247,10 @@ async function startNewBook(): Promise<void> {
   await runTurn("游戏开始。请随机生成时代背景、我的性别(男女各50%)、外貌、姓名、出身家庭与健康等设定，并从0~10岁阶段开始对我提出第一个抉择。记得输出STATE。");
 }
 
-async function openBook(id: string, openModal?: Modal): Promise<void> {
+async function openBook(id: string, openModal?: Modal, startAt: "first" | "last" = "last"): Promise<void> {
   const book = await getBook(id);
   if (!book) return;
+  cancelActiveTurn();
   if (book.pages.length === 0 && book.history.length > 0) {
     book.pages = rebuildPagesFromHistory(book.history);
     await saveBook(book);
@@ -1001,7 +1260,7 @@ async function openBook(id: string, openModal?: Modal): Promise<void> {
   view = "reader";
   modal = openModal || null;
   inspectingBookId = null;
-  currentPageIndex = Math.max(0, book.pages.length - 1);
+  currentPageIndex = startAt === "first" ? 0 : Math.max(0, book.pages.length - 1);
   dockExpanded = false;
   renderApp();
 }
@@ -1010,6 +1269,7 @@ async function burnBook(id: string): Promise<void> {
   const book = books.find((item) => item.id === id);
   if (!book) return;
   if (!confirm(`焚毁${book.title}？此操作不可撤回。`)) return;
+  if (activeBook?.id === id) cancelActiveTurn();
   await deleteBook(id);
   if (activeBook?.id === id) activeBook = null;
   inspectingBookId = null;
@@ -1040,6 +1300,14 @@ async function sendAction(text: string): Promise<void> {
   await runTurn(text === "__REROLL__" ? message : `我的选择：${message}`);
 }
 
+function cancelActiveTurn(): void {
+  if (activeController) {
+    activeController.abort();
+    activeController = null;
+  }
+  busy = false;
+}
+
 async function runTurn(userMsg: string): Promise<void> {
   const book = activeBook;
   if (!book || busy) return;
@@ -1051,21 +1319,31 @@ async function runTurn(userMsg: string): Promise<void> {
   currentPageIndex = pageIndex;
   renderApp();
 
+  activeController?.abort();
+  const controller = new AbortController();
+  activeController = controller;
+
   let fullText = "";
   try {
-    fullText = await callModel(cfg, [{ role: "system", content: systemPrompt(cfg) }, ...book.history], (acc) => {
-      const parsed = splitStateAndNarrative(acc);
-      const activePage = book.pages[pageIndex];
-      activePage.narrative = parsed.narrative || "";
-      if (parsed.state?.era_label) activePage.era_label = parsed.state.era_label;
-      updateActiveStory(activePage);
-    });
+    fullText = await callModel(
+      cfg,
+      [{ role: "system", content: systemPrompt(cfg) }, ...book.history],
+      (acc) => {
+        if (activeBook !== book || controller.signal.aborted) return;
+        book.pages[pageIndex].narrative = narrativeOnly(acc);
+        updateActiveStory(book.pages[pageIndex]);
+      },
+      controller.signal,
+    );
   } catch (error) {
+    if (controller.signal.aborted || (error as Error).name === "AbortError") return;
     book.pages[pageIndex].narrative = `✕ ${(error as Error).message}`;
     busy = false;
     await saveBook(book);
-    renderApp();
+    if (activeBook === book) renderApp();
     return;
+  } finally {
+    if (activeController === controller) activeController = null;
   }
 
   book.history.push({ role: "assistant", content: fullText });
@@ -1085,7 +1363,7 @@ async function runTurn(userMsg: string): Promise<void> {
   await saveBook(book);
   await refreshBooks();
   busy = false;
-  renderApp();
+  if (activeBook === book) renderApp();
 }
 
 function applyState(book: BookRecord, state: LifeState | null): void {
@@ -1171,6 +1449,11 @@ function splitStateAndNarrative(text: string): { narrative: string; state: LifeS
     if (open >= 0) narrative = text.slice(0, open).trim();
   }
   return { narrative, state };
+}
+
+function narrativeOnly(text: string): string {
+  const open = text.indexOf("<STATE");
+  return (open >= 0 ? text.slice(0, open) : text).trim();
 }
 
 function tryParseState(raw: string): LifeState | null {
