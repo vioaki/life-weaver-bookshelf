@@ -15,7 +15,13 @@ import {
 } from "./storage";
 import type { AppConfig, BookPage, BookRecord, ChatMessage, LifeState, View } from "./types";
 
-type Modal = null | "settings" | "stats" | "relationships" | "finale" | "inspect";
+type Modal = null | "settings" | "stats" | "relationships" | "finale" | "inspect" | "burn";
+
+interface PendingRetry {
+  bookId: string;
+  message: string;
+  error: string;
+}
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
 if (!appRoot) throw new Error("Missing #app root");
@@ -28,8 +34,12 @@ let view: View = "home";
 let modal: Modal = null;
 let busy = false;
 let currentPageIndex = 0;
-let dockExpanded = false;
 let inspectingBookId: string | null = null;
+let burnTargetId: string | null = null;
+let pendingRetry: PendingRetry | null = null;
+let streamFollow = true;
+let followScrollFrame = 0;
+let lastTouchY = 0;
 let homeBookEngineCleanup: (() => void) | null = null;
 let globalInkEngineCleanup: (() => void) | null = null;
 let backdropPointerStarted = false;
@@ -72,42 +82,6 @@ function renderApp(): void {
 
   if (!homeSandbox || !shelfSandbox || !readerSandbox) {
     app.innerHTML = `
-      <svg class="material-shaders" aria-hidden="true" focusable="false">
-        <defs>
-          <filter id="epic-parchment-shader" x="0%" y="0%" width="100%" height="100%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="3" result="noise" />
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.8" xChannelSelector="R" yChannelSelector="G" />
-          </filter>
-          <filter id="epic-gold-foil" x="-20%" y="-20%" width="140%" height="140%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.2" numOctaves="2" result="noise" />
-            <feColorMatrix type="matrix" values="1 0 0 0 0  0 .7 0 0 0  0 .4 0 0 0  0 0 0 1 0" in="noise" result="coloredNoise" />
-            <feComposite operator="in" in2="SourceGraphic" result="texturedGold" />
-            <feGaussianBlur in="SourceGraphic" stdDeviation="1" result="blur" />
-            <feSpecularLighting in="blur" surfaceScale="3" specularExponent="22" lighting-color="#fff" result="light">
-              <feDistantLight azimuth="45" elevation="60" />
-            </feSpecularLighting>
-            <feComposite operator="in" in2="SourceGraphic" result="specular" />
-            <feMerge>
-              <feMergeNode in="texturedGold" />
-              <feMergeNode in="specular" />
-            </feMerge>
-          </filter>
-          <filter id="epic-gold-foil-press" x="-10%" y="-10%" width="120%" height="120%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.15" numOctaves="2" result="noise" />
-            <feColorMatrix type="matrix" values="1 0 0 0 0  0 .75 0 0 0  0 .45 0 0 0  0 0 0 1 0" in="noise" result="gold" />
-            <feComposite operator="in" in2="SourceGraphic" result="textured" />
-            <feGaussianBlur in="SourceGraphic" stdDeviation=".5" result="blur" />
-            <feSpecularLighting in="blur" surfaceScale="2" specularExponent="30" lighting-color="#fff" result="light">
-              <feDistantLight azimuth="45" elevation="60" />
-            </feSpecularLighting>
-            <feComposite operator="in" in2="SourceGraphic" result="spec" />
-            <feMerge>
-              <feMergeNode in="textured" />
-              <feMergeNode in="spec" />
-            </feMerge>
-          </filter>
-        </defs>
-      </svg>
       <canvas id="fullscreen-ink-smoke-canvas" class="ink-fluid-overlay"></canvas>
       <div id="backdrop"></div>
       <div id="view-sandbox-home" class="view-sandbox"></div>
@@ -123,6 +97,7 @@ function renderApp(): void {
     renderedModalKey = "";
     globalInkEngineCleanup?.();
     globalInkEngineCleanup = initGlobalEtherealSmokeSolver();
+    attachStreamFollowGuards(readerSandbox);
   }
 
   if (view === "home") {
@@ -132,6 +107,8 @@ function renderApp(): void {
       homeSandbox.innerHTML = renderHome();
       renderedHomeSig = homeSig;
     }
+    // 回到书案时合上此前翻开的封面。
+    homeSandbox.querySelector("#mesh-stage")?.classList.remove("book-opening");
     if (!homeBookEngineCleanup && !homeEnginePending) {
       homeEnginePending = true;
       requestAnimationFrame(() => {
@@ -154,7 +131,7 @@ function renderApp(): void {
   if (view === "reader") {
     const book = activeBook;
     const sig = book
-      ? `${book.id}|${book.pages.length}|${busy}|${book.status}|${book.title}|${book.state.world ?? ""}|${book.state.oneline ?? ""}|${book.state.age ?? ""}`
+      ? `${book.id}|${book.pages.length}|${busy}|${book.status}|${book.title}|${book.state.world ?? ""}|${book.state.oneline ?? ""}|${book.state.age ?? ""}|${pendingRetry ? "retry" : ""}`
       : "none";
     if (sig !== renderedReaderSig) {
       readerSandbox.innerHTML = renderReader();
@@ -167,7 +144,7 @@ function renderApp(): void {
   shelfSandbox.classList.toggle("active-view", view === "shelf");
   readerSandbox.classList.toggle("active-view", view === "reader");
 
-  const modalKey = modal ? `${modal}:${inspectingBookId ?? ""}` : "";
+  const modalKey = modal ? `${modal}:${inspectingBookId ?? ""}:${burnTargetId ?? ""}` : "";
   if (modalKey !== renderedModalKey) {
     const current = app.querySelector<HTMLElement>(".modal-layer-global:not(.is-leaving)");
     if (modal) {
@@ -215,7 +192,7 @@ function renderHome(): string {
         <div class="home-actions">
           <button class="seal-btn primary" data-action="start-new">起 新 卷</button>
           <button class="seal-btn" data-action="continue-latest" ${latest ? "" : "disabled"}>续 前 卷</button>
-          <button class="seal-btn" data-action="open-shelf">入 书 柜</button>
+          <button class="seal-btn" data-action="open-shelf">藏 书 阁</button>
         </div>
 
         <div class="ledger-strip">
@@ -331,16 +308,38 @@ function initTopTierInteractiveBook(): (() => void) | null {
     matrixFrame = requestAnimationFrame(loopMatrix);
   };
 
+  let gyroBound = false;
+  const bindGyro = (): void => {
+    if (gyroBound || destroyed) return;
+    gyroBound = true;
+    window.addEventListener("deviceorientation", onDeviceOrientation);
+  };
+  // iOS 13+ 只在用户手势内调用 requestPermission 后才下发陀螺仪数据。
+  const orientationCtor = (window as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } }).DeviceOrientationEvent;
+  const needsGyroPermission = typeof orientationCtor?.requestPermission === "function";
+  const requestGyroPermission = (): void => {
+    orientationCtor?.requestPermission?.()
+      .then((state) => {
+        if (state === "granted") bindGyro();
+      })
+      .catch(() => {});
+  };
+  if (needsGyroPermission) {
+    window.addEventListener("pointerdown", requestGyroPermission, { once: true });
+  } else {
+    bindGyro();
+  }
+
   zone.addEventListener("pointermove", onPointerMove);
   zone.addEventListener("pointerleave", onPointerLeave);
-  window.addEventListener("deviceorientation", onDeviceOrientation);
 
   return () => {
     destroyed = true;
     running = false;
     zone.removeEventListener("pointermove", onPointerMove);
     zone.removeEventListener("pointerleave", onPointerLeave);
-    window.removeEventListener("deviceorientation", onDeviceOrientation);
+    if (needsGyroPermission) window.removeEventListener("pointerdown", requestGyroPermission);
+    if (gyroBound) window.removeEventListener("deviceorientation", onDeviceOrientation);
     cancelAnimationFrame(matrixFrame);
   };
 }
@@ -667,11 +666,11 @@ function renderShelf(): string {
   `;
 }
 
-function renderBookSpine(book: BookRecord): string {
+function renderBookSpine(book: BookRecord, index: number): string {
   const isFinished = book.status === "finished";
   return `
     <div class="book-spine-item"
-      style="--paper:${book.coverStyle.paper}; --seal:${book.coverStyle.seal}"
+      style="--paper:${book.coverStyle.paper}; --seal:${book.coverStyle.seal}; --spine-i:${index}"
       data-action="inspect-book"
       data-id="${book.id}"
       role="button"
@@ -732,7 +731,7 @@ function renderWelcomePage(): string {
   return `
     <article class="book-page active">
       <div class="era"><span class="deco">❖ 序 章 ❖</span><span class="ttl">人生之书</span></div>
-      <div class="story settled-text"><span class="dropcap">命</span>运尚未落笔。启封新卷后，此处会逐页留下你的一生。</div>
+      <div class="story settled-text"><p class="p-lead"><span class="dropcap">命</span>运尚未落笔。启封新卷后，此处会逐页留下你的一生。</p></div>
       <div class="page-num">— 序 —</div>
     </article>
   `;
@@ -742,7 +741,7 @@ function renderPage(page: BookPage, index: number): string {
   const active = index === currentPageIndex ? "active" : "";
   const chapter = toChineseNumeral(index + 1);
   return `
-    <article class="book-page ${active}">
+    <article class="book-page ${active}" data-idx="${index}">
       <div class="era"><span class="deco">❖ 第 ${chapter} 卷 ❖</span><span class="ttl">${esc(page.era_label || "启笔")}</span></div>
       <div class="story settled-text">${storyHTML(page.narrative)}</div>
       ${page.event ? `<div class="event ink-anim"><b>变故 · </b>${esc(page.event)}</div>` : ""}
@@ -756,10 +755,11 @@ function renderPage(page: BookPage, index: number): string {
 function renderDock(book: BookRecord): string {
   const state = book.state;
   const dead = book.status === "finished" || !!state.dead;
+  const retry = pendingRetry && pendingRetry.bookId === book.id ? pendingRetry : null;
   return `
     <section id="dock">
       <div id="dock-content">
-        ${busy ? `<div class="dock-hint">墨迹未干...</div>` : dead ? renderFinaleDock() : renderChoiceDock(state)}
+        ${busy ? `<div class="dock-hint writing">墨迹未干</div>` : retry ? renderRetryDock(retry) : dead ? renderFinaleDock() : renderChoiceDock(state)}
       </div>
     </section>
   `;
@@ -767,6 +767,19 @@ function renderDock(book: BookRecord): string {
 
 function renderFinaleDock(): string {
   return `<div class="dock-hint">此生已成卷 <button id="openDeath" data-action="open-finale">展开终章笺</button></div>`;
+}
+
+function renderRetryDock(retry: PendingRetry): string {
+  return `
+    <div class="mishap ink-anim">
+      <div class="mishap-title">笔 锋 中 断</div>
+      <div class="mishap-reason">${esc(retry.error)}</div>
+      <div class="mishap-actions">
+        <button class="mishap-retry" data-action="retry-turn">补笔重试</button>
+        <button class="mishap-dismiss" data-action="dismiss-retry">搁笔不提</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderChoiceDock(state: LifeState): string {
@@ -804,14 +817,18 @@ function renderModal(): string {
   if (modal === "settings") return renderSettingsModal();
   if (modal === "stats") return renderStatsModal();
   if (modal === "relationships") return renderRelationshipsModal();
+  if (modal === "burn") {
+    const book = burnTargetId ? books.find((item) => item.id === burnTargetId) : null;
+    if (book) return renderBurnModal(book);
+    return "";
+  }
   return renderFinaleModal();
 }
 
 function renderBookInspectModal(book: BookRecord): string {
-  const age = book.state.age != null ? `${book.state.age}春秋` : "年岁未详";
   return `
     <div class="modal on inspect-modal" data-action="close-inspect">
-      <div class="inspect-stage" aria-label="书本详情">
+      <div class="inspect-stage" role="dialog" aria-modal="true" aria-label="书本详情">
         <div class="inspect-book-cover" style="--paper:${book.coverStyle.paper}; --seal:${book.coverStyle.seal}">
           <div class="cover-binding"></div>
           <div class="cover-label">
@@ -821,7 +838,7 @@ function renderBookInspectModal(book: BookRecord): string {
 
         <div class="inspect-info">
           <div class="info-meta">${esc(book.protagonist || "无名者")} · ${esc(book.world)}</div>
-          <div class="info-summary">${esc(book.summaryLine || age)}</div>
+          <div class="info-summary">${esc(makeSummaryLine(book.state))}</div>
           <div class="info-time">落笔于 ${formatDate(book.updatedAt)}</div>
 
           <div class="inspect-actions">
@@ -829,7 +846,24 @@ function renderBookInspectModal(book: BookRecord): string {
             <button class="action-btn" data-action="read-book" data-id="${book.id}">翻阅生平</button>
             ${book.status === "finished" ? `<button class="action-btn" data-action="open-finale-book" data-id="${book.id}">查看终章</button>` : ""}
             <button class="action-btn danger" data-action="delete-book" data-id="${book.id}">焚毁此卷</button>
+            <button class="action-btn subtle" data-action="close-modal">放回架上</button>
           </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderBurnModal(book: BookRecord): string {
+  return `
+    <div class="modal on burn-modal" data-action="close-modal">
+      <div class="sheet burn-sheet" role="dialog" aria-modal="true" aria-label="焚毁确认">
+        <h2>焚 毁 此 卷</h2>
+        <p class="burn-line">${esc(book.title)} 将付之一炬。</p>
+        <p class="burn-line dim">${esc(book.protagonist || "无名者")}的一生字句成灰，从此不可复得。</p>
+        <div class="burn-actions">
+          <button class="btn ghost" type="button" data-action="close-modal">且慢，放回</button>
+          <button class="btn burn-confirm" type="button" data-action="confirm-burn" data-id="${attr(book.id)}">付之一炬</button>
         </div>
       </div>
     </div>
@@ -839,7 +873,7 @@ function renderBookInspectModal(book: BookRecord): string {
 function renderSettingsModal(): string {
   return `
     <div class="modal on" data-action="close-modal">
-      <form class="sheet" id="settingsForm">
+      <form class="sheet" id="settingsForm" role="dialog" aria-modal="true" aria-label="笔墨与接口设置">
         <h2>笔墨与接口</h2>
         <label>接口地址<input name="url" value="${attr(cfg.url)}" placeholder="https://api.openai.com/v1" /></label>
         <label>API Key<input name="key" type="password" value="${attr(cfg.key)}" placeholder="仅保存在本地" /></label>
@@ -863,7 +897,7 @@ function renderStatsModal(): string {
   const keys = ["健康", "智力", "体力", "魅力", "财富", ...Object.keys(stats).filter((k) => !["健康", "智力", "体力", "魅力", "财富"].includes(k))];
   return `
     <div class="modal on" data-action="close-modal">
-      <div class="sheet">
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="命格与纪事">
         <h2>☯ 叩问命格</h2>
         ${keys.length ? keys.map((key) => renderStatLine(key, Number(stats[key]) || 0)).join("") : `<div class="empty">命格尚未显影</div>`}
         ${state?.extra ? `<div class="extras">${Object.entries(state.extra).map(([k, v]) => `<span class="chip">${esc(k)} <b>${esc(v)}</b></span>`).join("")}</div>` : ""}
@@ -879,7 +913,7 @@ function renderRelationshipsModal(): string {
   const rels = activeBook?.state.relationships || [];
   return `
     <div class="modal on" data-action="close-modal">
-      <div class="sheet">
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="书中人物因缘">
         <h2>缘 · 书中人</h2>
         ${rels.length ? rels.map((rel) => `<div class="rel"><div class="face">${esc(rel.emoji || "人")}</div><div class="info"><div class="n">${esc(rel.name)}</div><div class="r">${esc(rel.relation || "")}${rel.note ? " · " + esc(rel.note) : ""}</div></div><div class="bond ${rel.bond || "neutral"}">${bondLabel(rel.bond)}</div></div>`).join("") : `<div class="empty">尚未遇见任何人</div>`}
         <button class="btn ghost" type="button" data-action="close-modal">合上</button>
@@ -895,7 +929,8 @@ function renderFinaleModal(): string {
 
   return `
     <div id="death" class="on">
-      <div class="death-scroll">
+      <div class="death-scroll" role="dialog" aria-modal="true" aria-label="终章">
+
         <div class="death-zen-circle"></div>
 
         <div class="death-header">
@@ -944,11 +979,7 @@ async function handleClick(event: MouseEvent): Promise<void> {
     event.preventDefault();
     const clickedBackdrop = backdropPointerStarted && actionEl.classList.contains("modal") && target === actionEl;
     const clickedCloseButton = actionEl.tagName === "BUTTON";
-    if (clickedBackdrop || clickedCloseButton) {
-      modal = null;
-      inspectingBookId = null;
-      renderApp();
-    }
+    if (clickedBackdrop || clickedCloseButton) closeModal();
     backdropPointerStarted = false;
     return;
   }
@@ -988,7 +1019,6 @@ async function handleClick(event: MouseEvent): Promise<void> {
     renderApp();
   } else if (action === "open-finale") {
     modal = "finale";
-    dockExpanded = false;
     renderApp();
   } else if (action === "inspect-book") {
     inspectingBookId = actionEl.dataset.id || null;
@@ -1014,14 +1044,19 @@ async function handleClick(event: MouseEvent): Promise<void> {
   } else if (action === "open-finale-book") {
     await openBook(actionEl.dataset.id || "", "finale");
   } else if (action === "delete-book") {
+    burnTargetId = actionEl.dataset.id || null;
+    modal = "burn";
+    renderApp();
+  } else if (action === "confirm-burn") {
     await burnBook(actionEl.dataset.id || "");
+  } else if (action === "retry-turn") {
+    await retryFailedTurn();
+  } else if (action === "dismiss-retry") {
+    await dismissFailedTurn();
   } else if (action === "prev-page") {
     flipTo(currentPageIndex - 1);
   } else if (action === "next-page") {
     flipTo(currentPageIndex + 1);
-  } else if (action === "dock-toggle") {
-    dockExpanded = !dockExpanded;
-    renderApp();
   } else if (action === "choice") {
     await sendAction(actionEl.dataset.choice || "");
   } else if (action === "reroll") {
@@ -1076,8 +1111,15 @@ async function handleKeyDown(event: KeyboardEvent): Promise<void> {
 }
 
 function closeModal(): void {
-  modal = null;
-  inspectingBookId = null;
+  if (modal === "burn" && inspectingBookId) {
+    // 焚毁确认若是从详阅面板进入的，取消时应放回详阅，而不是一并关掉。
+    modal = "inspect";
+    burnTargetId = null;
+  } else {
+    modal = null;
+    inspectingBookId = null;
+    burnTargetId = null;
+  }
   renderApp();
 }
 
@@ -1211,6 +1253,56 @@ function playReincarnateEffect(): void {
   window.setTimeout(() => layer.remove(), 5400);
 }
 
+// 焚毁书卷：一页信纸自下而上焦黑蜷曲，火星与纸灰升腾散尽。
+function playBurnEffect(book: BookRecord): void {
+  if (prefersReducedMotion()) return;
+
+  const layer = document.createElement("div");
+  layer.className = "burn-fx";
+  layer.setAttribute("aria-hidden", "true");
+
+  const paper = document.createElement("div");
+  paper.className = "burn-fx-paper";
+  paper.style.setProperty("--paper", book.coverStyle.paper);
+  paper.style.setProperty("--seal", book.coverStyle.seal);
+  const title = document.createElement("div");
+  title.className = "burn-fx-title";
+  title.textContent = book.title;
+  paper.appendChild(title);
+  layer.appendChild(paper);
+
+  const label = document.createElement("div");
+  label.className = "burn-fx-label";
+  label.textContent = "字句成灰 · 就此别过";
+  layer.appendChild(label);
+
+  const rand = (min: number, max: number) => min + Math.random() * (max - min);
+  for (let i = 0; i < 30; i++) {
+    const spark = document.createElement("span");
+    spark.className = i % 3 === 0 ? "burn-fx-ash" : "burn-fx-ember";
+    spark.style.setProperty("--bx0", `${rand(-92, 92)}px`);
+    spark.style.setProperty("--bx1", `${rand(-150, 150)}px`);
+    spark.style.setProperty("--by1", `${rand(-330, -150)}px`);
+    spark.style.setProperty("--bdelay", `${rand(0.5, 1.9)}s`);
+    spark.style.setProperty("--bdur", `${rand(1.2, 2.3)}s`);
+    spark.style.setProperty("--bscale", `${rand(0.5, 1.2)}`);
+    layer.appendChild(spark);
+  }
+
+  document.body.appendChild(layer);
+  window.setTimeout(() => layer.remove(), 3600);
+}
+
+// 起卷/续卷时，书案上那本书先翻开封面再入长卷，衔接「翻开一本书」的心象。
+async function playBookOpenTransition(): Promise<void> {
+  if (view !== "home" || prefersReducedMotion()) return;
+  const stage = app.querySelector<HTMLElement>("#mesh-stage");
+  if (!stage || stage.classList.contains("book-opening")) return;
+  stopHomeBookEngine();
+  stage.classList.add("book-opening");
+  await new Promise((resolve) => window.setTimeout(resolve, 560));
+}
+
 async function startNewBook(): Promise<void> {
   if (!cfg.key.trim()) {
     modal = "settings";
@@ -1218,6 +1310,8 @@ async function startNewBook(): Promise<void> {
     return;
   }
   cancelActiveTurn();
+  pendingRetry = null;
+  await playBookOpenTransition();
   const now = Date.now();
   const book: BookRecord = {
     id: crypto.randomUUID(),
@@ -1242,7 +1336,6 @@ async function startNewBook(): Promise<void> {
   view = "reader";
   modal = null;
   currentPageIndex = 0;
-  dockExpanded = false;
   renderApp();
   await runTurn("游戏开始。请随机生成时代背景、我的性别(男女各50%)、外貌、姓名、出身家庭与健康等设定，并从0~10岁阶段开始对我提出第一个抉择。记得输出STATE。");
 }
@@ -1251,6 +1344,8 @@ async function openBook(id: string, openModal?: Modal, startAt: "first" | "last"
   const book = await getBook(id);
   if (!book) return;
   cancelActiveTurn();
+  pendingRetry = null;
+  await playBookOpenTransition();
   if (book.pages.length === 0 && book.history.length > 0) {
     book.pages = rebuildPagesFromHistory(book.history);
     await saveBook(book);
@@ -1261,21 +1356,44 @@ async function openBook(id: string, openModal?: Modal, startAt: "first" | "last"
   modal = openModal || null;
   inspectingBookId = null;
   currentPageIndex = startAt === "first" ? 0 : Math.max(0, book.pages.length - 1);
-  dockExpanded = false;
   renderApp();
 }
 
 async function burnBook(id: string): Promise<void> {
   const book = books.find((item) => item.id === id);
   if (!book) return;
-  if (!confirm(`焚毁${book.title}？此操作不可撤回。`)) return;
   if (activeBook?.id === id) cancelActiveTurn();
+  if (pendingRetry?.bookId === id) pendingRetry = null;
+  modal = null;
+  inspectingBookId = null;
+  burnTargetId = null;
+  playBurnEffect(book);
   await deleteBook(id);
   if (activeBook?.id === id) activeBook = null;
-  inspectingBookId = null;
-  modal = null;
   await refreshBooks();
   view = "shelf";
+  renderApp();
+}
+
+async function retryFailedTurn(): Promise<void> {
+  const retry = pendingRetry;
+  const book = activeBook;
+  if (!retry || !book || book.id !== retry.bookId || busy) return;
+  pendingRetry = null;
+  await runTurn(retry.message);
+}
+
+async function dismissFailedTurn(): Promise<void> {
+  const retry = pendingRetry;
+  const book = activeBook;
+  pendingRetry = null;
+  if (retry && book && book.id === retry.bookId) {
+    const last = book.pages[book.pages.length - 1];
+    if (last?.choiceMade && retry.message === `我的选择：${last.choiceMade}`) {
+      last.choiceMade = "";
+      await saveBook(book);
+    }
+  }
   renderApp();
 }
 
@@ -1312,16 +1430,26 @@ async function runTurn(userMsg: string): Promise<void> {
   const book = activeBook;
   if (!book || busy) return;
   busy = true;
-  dockExpanded = false;
-  book.history.push({ role: "user", content: userMsg });
+  pendingRetry = null;
+  const historyEntry: ChatMessage = { role: "user", content: userMsg };
+  book.history.push(historyEntry);
   const pageIndex = book.pages.length;
-  book.pages.push({ era_label: "起笔中…", narrative: "", event: "", deltas: [], choiceMade: "", choices: [], dead: false, death: null });
+  const draftPage: BookPage = { era_label: "起笔中…", narrative: "", event: "", deltas: [], choiceMade: "", choices: [], dead: false, death: null };
+  book.pages.push(draftPage);
   currentPageIndex = pageIndex;
   renderApp();
+  beginStreamFollow();
 
   activeController?.abort();
   const controller = new AbortController();
   activeController = controller;
+
+  // 失败或中断时把这次的草稿页和输入撤干净，不往书里留垃圾页。
+  const rollbackDraft = (): void => {
+    if (book.pages[book.pages.length - 1] === draftPage) book.pages.pop();
+    if (book.history[book.history.length - 1] === historyEntry) book.history.pop();
+    currentPageIndex = Math.min(currentPageIndex, Math.max(0, book.pages.length - 1));
+  };
 
   let fullText = "";
   try {
@@ -1330,16 +1458,19 @@ async function runTurn(userMsg: string): Promise<void> {
       [{ role: "system", content: systemPrompt(cfg) }, ...book.history],
       (acc) => {
         if (activeBook !== book || controller.signal.aborted) return;
-        book.pages[pageIndex].narrative = narrativeOnly(acc);
-        updateActiveStory(book.pages[pageIndex]);
+        draftPage.narrative = narrativeOnly(acc);
+        updateStreamingStory(pageIndex, draftPage);
       },
       controller.signal,
     );
   } catch (error) {
-    if (controller.signal.aborted || (error as Error).name === "AbortError") return;
-    book.pages[pageIndex].narrative = `✕ ${(error as Error).message}`;
+    if (controller.signal.aborted || (error as Error).name === "AbortError") {
+      rollbackDraft();
+      return;
+    }
+    rollbackDraft();
+    pendingRetry = { bookId: book.id, message: userMsg, error: (error as Error).message || "接口未响应" };
     busy = false;
-    await saveBook(book);
     if (activeBook === book) renderApp();
     return;
   } finally {
@@ -1395,22 +1526,168 @@ function applyState(book: BookRecord, state: LifeState | null): void {
   book.summaryLine = makeSummaryLine(next);
 }
 
-function updateActiveStory(page: BookPage): void {
-  const story = document.querySelector<HTMLElement>(".book-page.active .story");
-  const title = document.querySelector<HTMLElement>(".book-page.active .era .ttl");
-  if (story) {
+// 按页索引精确定位落墨页：流式期间即使玩家翻回旧页，墨也只写进草稿页。
+function updateStreamingStory(pageIndex: number, page: BookPage): void {
+  const pageEl = app.querySelector<HTMLElement>(`.book-page[data-idx="${pageIndex}"]`);
+  if (!pageEl) return;
+  const story = pageEl.querySelector<HTMLElement>(".story");
+  const title = pageEl.querySelector<HTMLElement>(".era .ttl");
+  if (title && title.textContent !== page.era_label) title.textContent = page.era_label;
+  if (!story) return;
+  if (!story.classList.contains("streaming-text")) {
     story.classList.add("streaming-text");
     story.classList.remove("settled-text", "ink-anim");
-    story.innerHTML = `${storyHTML(page.narrative)}<span class="ink-cursor"></span>`;
+    story.textContent = "";
   }
-  if (title) title.textContent = page.era_label;
+  reconcileStreamingStory(story, page.narrative);
+  if (pageEl.classList.contains("active")) followStream();
+}
+
+// 流式渲染只追加新墨，不重建整段 DOM：长文不再随字数增长而卡顿、闪烁。
+function reconcileStreamingStory(story: HTMLElement, narrative: string): void {
+  const paras = storyParagraphs(narrative);
+  const cursor = ensureInkCursor(story);
+  const nodes = Array.from(story.children).filter((el): el is HTMLParagraphElement => el.tagName === "P");
+  for (let i = 0; i < paras.length; i++) {
+    let p = nodes[i];
+    if (!p) {
+      p = document.createElement("p");
+      if (i === 0) p.classList.add("p-lead");
+      story.appendChild(p);
+      nodes.push(p);
+    }
+    const wanted = paras[i];
+    const current = p.textContent || "";
+    if (current === wanted) continue;
+    if (wanted.startsWith(current)) {
+      appendStreamChunk(p, wanted.slice(current.length), i === 0 && current.length === 0);
+    } else {
+      setStreamParagraph(p, wanted, i === 0);
+    }
+  }
+  // 段落数回缩时（如半截 <STATE 被识别后从正文剔除）清掉多余的尾段。
+  for (let i = nodes.length - 1; i >= Math.max(paras.length, 1); i--) {
+    nodes[i].remove();
+    nodes.pop();
+  }
+  const lastP = nodes[Math.min(paras.length, nodes.length) - 1];
+  if (lastP && cursor.parentElement !== lastP) lastP.appendChild(cursor);
+}
+
+function appendStreamChunk(p: HTMLParagraphElement, text: string, leadStart: boolean): void {
+  if (!text) return;
+  const frag = document.createDocumentFragment();
+  let rest = text;
+  if (leadStart) {
+    const [first] = Array.from(rest);
+    if (first) {
+      const drop = document.createElement("span");
+      drop.className = "dropcap";
+      drop.textContent = first;
+      frag.appendChild(drop);
+      rest = rest.slice(first.length);
+    }
+  }
+  if (rest) {
+    const chunk = document.createElement("span");
+    chunk.className = "ink-fresh";
+    chunk.textContent = rest;
+    frag.appendChild(chunk);
+  }
+  p.insertBefore(frag, p.querySelector(".ink-cursor"));
+}
+
+function setStreamParagraph(p: HTMLParagraphElement, text: string, lead: boolean): void {
+  const cursor = p.querySelector<HTMLElement>(".ink-cursor");
+  p.textContent = "";
+  appendStreamChunk(p, text, lead);
+  if (cursor) p.appendChild(cursor);
+}
+
+function ensureInkCursor(story: HTMLElement): HTMLElement {
+  let cursor = story.querySelector<HTMLElement>(".ink-cursor");
+  if (!cursor) {
+    cursor = document.createElement("span");
+    cursor.className = "ink-cursor";
+    story.appendChild(cursor);
+  }
+  return cursor;
+}
+
+function readerScroller(): HTMLElement | null {
+  return app.querySelector<HTMLElement>("#view-sandbox-reader");
+}
+
+function beginStreamFollow(): void {
+  streamFollow = true;
+  readerScroller()?.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+}
+
+// 贴底自动跟随：光标滑出视野就把它带回来；玩家上滚即暂停，滚回底部自动恢复。
+function attachStreamFollowGuards(scroller: HTMLElement): void {
+  scroller.addEventListener(
+    "wheel",
+    (event) => {
+      if (event.deltaY < 0) streamFollow = false;
+    },
+    { passive: true },
+  );
+  scroller.addEventListener(
+    "touchstart",
+    (event) => {
+      lastTouchY = event.touches[0]?.clientY ?? 0;
+    },
+    { passive: true },
+  );
+  scroller.addEventListener(
+    "touchmove",
+    (event) => {
+      const y = event.touches[0]?.clientY ?? 0;
+      if (y > lastTouchY + 4) streamFollow = false;
+      lastTouchY = y;
+    },
+    { passive: true },
+  );
+  scroller.addEventListener(
+    "scroll",
+    () => {
+      if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48) streamFollow = true;
+    },
+    { passive: true },
+  );
+}
+
+function followStream(): void {
+  if (!streamFollow || followScrollFrame) return;
+  followScrollFrame = requestAnimationFrame(() => {
+    followScrollFrame = 0;
+    if (!streamFollow) return;
+    const cursor = document.querySelector<HTMLElement>(".book-page.active .ink-cursor");
+    cursor?.scrollIntoView({ block: "nearest", behavior: "auto" });
+  });
 }
 
 function flipTo(index: number): void {
   const total = activeBook?.pages.length || 0;
-  if (index < 0 || index >= total) return;
+  if (index < 0 || index >= total || index === currentPageIndex) return;
+  const slider = app.querySelector<HTMLElement>("#book-slider");
+  const outgoing = slider?.querySelector<HTMLElement>(".book-page.active");
+  if (slider && outgoing && !prefersReducedMotion()) {
+    // 旧页保持展开随滑动移出，等 transitionend 再折叠，翻页过程不再露出空白。
+    slider.querySelectorAll(".book-page.leaving").forEach((el) => el.classList.remove("leaving"));
+    outgoing.classList.add("leaving");
+    let collapsed = false;
+    const collapse = (): void => {
+      if (collapsed) return;
+      collapsed = true;
+      outgoing.classList.remove("leaving");
+    };
+    slider.addEventListener("transitionend", collapse, { once: true });
+    window.setTimeout(collapse, 620);
+  }
   currentPageIndex = index;
   renderApp();
+  readerScroller()?.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" });
 }
 
 function rebuildPagesFromHistory(history: ChatMessage[]): BookPage[] {
@@ -1453,7 +1730,13 @@ function splitStateAndNarrative(text: string): { narrative: string; state: LifeS
 
 function narrativeOnly(text: string): string {
   const open = text.indexOf("<STATE");
-  return (open >= 0 ? text.slice(0, open) : text).trim();
+  let cut = open >= 0 ? text.slice(0, open) : text;
+  // 流式末尾可能恰好停在 "<STA" 这类半截标签上，先藏起来等后续字符。
+  const tail = cut.lastIndexOf("<");
+  if (tail >= 0 && cut.length - tail < 6 && "<STATE".startsWith(cut.slice(tail))) {
+    cut = cut.slice(0, tail);
+  }
+  return cut.trim();
 }
 
 function tryParseState(raw: string): LifeState | null {
@@ -1473,12 +1756,22 @@ function tryParseState(raw: string): LifeState | null {
   }
 }
 
+// 正文按空行切成段落：首段带朱色首字，不缩进；后续段落统一 2em 缩进（见 .story p 样式）。
+function storyParagraphs(narrative: string): string[] {
+  return String(narrative || "")
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function storyHTML(narrative: string): string {
-  const text = String(narrative || "");
-  if (!text) return "";
-  const [first] = Array.from(text);
-  const rest = text.slice(first.length);
-  return `<span class="dropcap">${esc(first)}</span>${esc(rest)}`;
+  return storyParagraphs(narrative)
+    .map((par, index) => {
+      if (index > 0) return `<p>${esc(par)}</p>`;
+      const [first] = Array.from(par);
+      return `<p class="p-lead"><span class="dropcap">${esc(first)}</span>${esc(par.slice(first.length))}</p>`;
+    })
+    .join("");
 }
 
 function renderStatLine(key: string, value: number): string {
@@ -1502,7 +1795,13 @@ function toChineseNumeral(num: number): string {
 }
 
 function formatDate(ts: number): string {
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(ts);
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(ts);
 }
 
 function bondLabel(bond?: string): string {

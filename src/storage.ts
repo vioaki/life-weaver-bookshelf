@@ -139,11 +139,11 @@ export function makeCoverStyle(world: string, avatar: string): BookRecord["cover
   return { seal: seals[hash % seals.length], paper: papers[(hash >> 3) % papers.length] };
 }
 
+// 世界名不再重复出现：详阅面板的 info-meta 已展示「主角 · 世界」，摘要只补年岁与状态。
 export function makeSummaryLine(state: any): string {
-  const world = state?.world || "未名世界";
   const age = state?.age != null ? `${state.age}岁` : "年岁未详";
   const status = state?.dead ? "终章已成" : "仍在续写";
-  return `${world} · ${age} · ${status}`;
+  return `${age} · ${status}`;
 }
 
 function safeParse<T>(raw: string | null): T | null {
